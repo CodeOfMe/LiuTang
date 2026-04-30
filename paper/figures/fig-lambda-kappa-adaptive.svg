@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 470" width="1020" height="470" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrowG" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#475569"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#2563EB"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#DC2626"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#059669"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <filter id="shadowSm" x="-1%" y="-1%" width="102%" height="106%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="1" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1020" height="470" rx="12" fill="#F8FAFC"/>
+  <rect x="1" y="1" width="1018" height="468" rx="12" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="510" y="32" text-anchor="middle" font-size="17" font-weight="700" fill="#1E293B">Architecture Evolution: Lambda → Kappa → Viscosity-Adaptive</text>
+
+  <!-- ============ LEFT: Lambda Architecture ============ -->
+  <rect x="18" y="48" width="310" height="410" rx="12" fill="white" stroke="#E2E8F0" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="18" y="48" width="310" height="32" rx="12" fill="#DC2626"/>
+  <rect x="18" y="70" width="310" height="10" fill="#DC2626"/>
+  <text x="173" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="white">Lambda Architecture</text>
+
+  <!-- Batch Layer -->
+  <rect x="40" y="100" width="115" height="55" rx="8" fill="#FEE2E2" stroke="#FECACA" stroke-width="1.2" filter="url(#shadowSm)"/>
+  <text x="97" y="122" text-anchor="middle" font-size="11" font-weight="600" fill="#991B1B">Batch Layer</text>
+  <text x="97" y="140" text-anchor="middle" font-size="9" fill="#DC2626">High Latency</text>
+
+  <!-- Speed Layer -->
+  <rect x="185" y="100" width="115" height="55" rx="8" fill="#FEF3C7" stroke="#FDE68A" stroke-width="1.2" filter="url(#shadowSm)"/>
+  <text x="242" y="122" text-anchor="middle" font-size="11" font-weight="600" fill="#92400E">Speed Layer</text>
+  <text x="242" y="140" text-anchor="middle" font-size="9" fill="#D97706">Low Latency</text>
+
+  <!-- Arrows from layers to serving -->
+  <line x1="97" y1="155" x2="148" y2="210" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowG)"/>
+  <line x1="242" y1="155" x2="198" y2="210" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowG)"/>
+
+  <!-- Serving View -->
+  <rect x="110" y="210" width="130" height="45" rx="8" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.2" filter="url(#shadowSm)"/>
+  <text x="175" y="236" text-anchor="middle" font-size="11" font-weight="600" fill="#475569">Serving View</text>
+
+  <!-- Serving → Result -->
+  <line x1="175" y1="255" x2="175" y2="300" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowG)"/>
+  <rect x="130" y="305" width="90" height="40" rx="8" fill="#DC2626" filter="url(#shadowSm)"/>
+  <text x="175" y="329" text-anchor="middle" font-size="12" font-weight="700" fill="white">Result</text>
+
+  <!-- Pros/Cons -->
+  <text x="173" y="375" text-anchor="middle" font-size="9" fill="#059669">✓ Accurate batch + fast real-time</text>
+  <text x="173" y="392" text-anchor="middle" font-size="9" fill="#DC2626">✗ Complex: two code paths</text>
+  <text x="173" y="409" text-anchor="middle" font-size="9" fill="#DC2626">✗ Merge complexity at serving</text>
+
+  <!-- ============ CENTER: Kappa Architecture ============ -->
+  <rect x="350" y="48" width="310" height="410" rx="12" fill="white" stroke="#E2E8F0" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="350" y="48" width="310" height="32" rx="12" fill="#059669"/>
+  <rect x="350" y="70" width="310" height="10" fill="#059669"/>
+  <text x="505" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="white">Kappa Architecture</text>
+
+  <!-- Event Log -->
+  <rect x="420" y="100" width="170" height="50" rx="8" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1.2" filter="url(#shadowSm)"/>
+  <text x="505" y="125" text-anchor="middle" font-size="11" font-weight="600" fill="#047857">Event Log</text>
+  <text x="505" y="140" text-anchor="middle" font-size="9" fill="#059669">Immutable, append-only</text>
+
+  <!-- Arrow to Stream Processor -->
+  <line x1="505" y1="150" x2="505" y2="190" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowG)"/>
+
+  <!-- Stream Processor -->
+  <rect x="400" y="195" width="210" height="55" rx="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.5" filter="url(#shadowSm)"/>
+  <text x="505" y="218" text-anchor="middle" font-size="12" font-weight="700" fill="#047857">Stream Processor</text>
+  <text x="505" y="236" text-anchor="middle" font-size="9" fill="#059669">Single processing path</text>
+
+  <!-- Replay arrow (curved, from Stream Processor back to itself via Event Log) -->
+  <path d="M400,215 Q370,215 370,158 Q370,120 420,125" stroke="#059669" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrowGreen)"/>
+  <text x="355" y="170" text-anchor="middle" font-size="8" fill="#059669" font-style="italic">replay</text>
+
+  <!-- Stream Processor → Result -->
+  <line x1="505" y1="250" x2="505" y2="300" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowG)"/>
+  <rect x="460" y="305" width="90" height="40" rx="8" fill="#059669" filter="url(#shadowSm)"/>
+  <text x="505" y="329" text-anchor="middle" font-size="12" font-weight="700" fill="white">Result</text>
+
+  <!-- Pros/Cons -->
+  <text x="505" y="375" text-anchor="middle" font-size="9" fill="#059669">✓ Single code path, simpler</text>
+  <text x="505" y="392" text-anchor="middle" font-size="9" fill="#059669">✓ Replay for reprocessing</text>
+  <text x="505" y="409" text-anchor="middle" font-size="9" fill="#DC2626">✗ Streaming-only, no batch optimization</text>
+
+  <!-- ============ RIGHT: Viscosity-Adaptive Architecture ============ -->
+  <rect x="682" y="48" width="320" height="410" rx="12" fill="white" stroke="#E2E8F0" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="682" y="48" width="320" height="32" rx="12" fill="#2563EB"/>
+  <rect x="682" y="70" width="320" height="10" fill="#2563EB"/>
+  <text x="842" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="white">Viscosity-Adaptive Architecture</text>
+
+  <!-- Spectrum bar -->
+  <rect x="710" y="100" width="264" height="22" rx="11" fill="url(#spectrumGrad)" filter="url(#shadowSm)"/>
+  <defs>
+    <linearGradient id="spectrumGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#D97706"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+  </defs>
+  <text x="730" y="115" font-size="8" font-weight="600" fill="white">Stream</text>
+  <text x="842" y="115" font-size="8" font-weight="600" fill="white">η=0.5</text>
+  <text x="948" y="115" font-size="8" font-weight="600" fill="white">Batch</text>
+
+  <!-- ViscosityController -->
+  <rect x="740" y="138" width="204" height="50" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5" filter="url(#shadowSm)"/>
+  <text x="842" y="158" text-anchor="middle" font-size="11" font-weight="700" fill="#1E40AF">ViscosityController</text>
+  <text x="842" y="176" text-anchor="middle" font-size="9" fill="#2563EB">η parameter controls spectrum</text>
+
+  <!-- Arrow from spectrum to controller -->
+  <line x1="842" y1="125" x2="842" y2="138" stroke="#2563EB" stroke-width="1.2" marker-end="url(#arrowBlue)"/>
+
+  <!-- Adaptive Executor -->
+  <rect x="730" y="210" width="224" height="55" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.2" filter="url(#shadowSm)"/>
+  <text x="842" y="233" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">Adaptive Executor</text>
+  <text x="842" y="251" text-anchor="middle" font-size="9" fill="#2563EB">Batch / Streaming / Hybrid</text>
+
+  <!-- Controller → Executor -->
+  <line x1="842" y1="188" x2="842" y2="210" stroke="#2563EB" stroke-width="1.2" marker-end="url(#arrowBlue)"/>
+
+  <!-- FlowMetrics feedback -->
+  <rect x="710" y="285" width="140" height="40" rx="6" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1" filter="url(#shadowSm)"/>
+  <text x="780" y="308" text-anchor="middle" font-size="10" font-weight="600" fill="#7C3AED">FlowMetrics</text>
+  <!-- Feedback arrow -->
+  <path d="M710,305 Q695,215 740,155" stroke="#7C3AED" stroke-width="1.3" fill="none" stroke-dasharray="5,3" marker-end="url(#arrowG)"/>
+  <text x="696" y="228" font-size="8" fill="#7C3AED" font-style="italic">feedback</text>
+
+  <!-- Executor → Result -->
+  <line x1="902" y1="265" x2="902" y2="305" stroke="#475569" stroke-width="0"/>
+  <line x1="842" y1="265" x2="842" y2="320" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowG)"/>
+
+  <!-- Arrow from FlowMetrics to Result area too -->
+  <rect x="800" y="325" width="84" height="40" rx="8" fill="#2563EB" filter="url(#shadowSm)"/>
+  <text x="842" y="349" text-anchor="middle" font-size="12" font-weight="700" fill="white">Result</text>
+
+  <!-- Pros/Cons -->
+  <text x="842" y="390" text-anchor="middle" font-size="9" fill="#059669">✓ Unified model, single code path</text>
+  <text x="842" y="407" text-anchor="middle" font-size="9" fill="#059669">✓ Adaptive: batch when possible, stream when needed</text>
+  <text x="842" y="424" text-anchor="middle" font-size="9" fill="#059669">✓ Feedback-driven viscosity control</text>
+
+  <!-- Evolution arrows between boxes -->
+  <path d="M328,280 Q340,280 350,280" stroke="#94A3B8" stroke-width="1.5" fill="none" marker-end="url(#arrowG)"/>
+  <path d="M660,280 Q670,280 682,280" stroke="#94A3B8" stroke-width="1.5" fill="none" marker-end="url(#arrowG)"/>
+</svg>

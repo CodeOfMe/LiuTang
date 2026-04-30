@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 310" width="920" height="310" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <filter id="shadowSm" x="-1%" y="-1%" width="102%" height="106%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="1" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="920" height="310" rx="12" fill="#F8FAFC"/>
+  <rect x="1" y="1" width="918" height="308" rx="12" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="460" y="28" text-anchor="middle" font-size="16" font-weight="700" fill="#1E293B">Window Types</text>
+
+  <!-- ============ Tumbling Window ============ -->
+  <g transform="translate(18, 48)">
+    <rect width="168" height="252" rx="10" fill="white" stroke="#E2E8F0" stroke-width="1.2" filter="url(#shadow)"/>
+    <rect width="168" height="28" rx="10" fill="#2563EB"/>
+    <rect y="20" width="168" height="8" fill="#2563EB"/>
+    <text x="84" y="19" text-anchor="middle" font-size="12" font-weight="700" fill="white">Tumbling</text>
+
+    <!-- Timeline -->
+    <line x1="16" y1="60" x2="152" y2="60" stroke="#CBD5E1" stroke-width="1.5"/>
+    <!-- Tick marks -->
+    <line x1="16" y1="56" x2="16" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="61" y1="56" x2="61" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="106" y1="56" x2="106" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="152" y1="56" x2="152" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <text x="16" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">0</text>
+    <text x="61" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">2s</text>
+    <text x="106" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">4s</text>
+    <text x="152" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">6s</text>
+
+    <!-- Window blocks -->
+    <rect x="16" y="82" width="45" height="60" rx="4" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.2"/>
+    <text x="38" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#2563EB">w1</text>
+    <text x="38" y="122" text-anchor="middle" font-size="8" fill="#1E40AF">0–2s</text>
+
+    <rect x="61" y="82" width="45" height="60" rx="4" fill="#BFDBFE" stroke="#2563EB" stroke-width="1.2"/>
+    <text x="83" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#1E40AF">w2</text>
+    <text x="83" y="122" text-anchor="middle" font-size="8" fill="#1E40AF">2–4s</text>
+
+    <rect x="106" y="82" width="46" height="60" rx="4" fill="#93C5FD" stroke="#2563EB" stroke-width="1.2"/>
+    <text x="129" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#1E40AF">w3</text>
+    <text x="129" y="122" text-anchor="middle" font-size="8" fill="#1E40AF">4–6s</text>
+
+    <!-- Properties -->
+    <line x1="16" y1="155" x2="152" y2="155" stroke="#E2E8F0" stroke-width="0.5"/>
+    <text x="84" y="175" text-anchor="middle" font-size="9" fill="#475569">Fixed-size, non-overlapping</text>
+    <rect x="26" y="185" width="116" height="22" rx="4" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="0.8"/>
+    <text x="84" y="200" text-anchor="middle" font-size="9" font-weight="600" fill="#2563EB">size = slide</text>
+    <text x="84" y="225" text-anchor="middle" font-size="8" fill="#64748B">e.g. tumbling(2s)</text>
+    <rect x="26" y="232" width="116" height="22" rx="4" fill="#2563EB"/>
+    <text x="84" y="247" text-anchor="middle" font-size="9" font-weight="600" fill="white">window(MOD, TUMBLING, size=2s)</text>
+  </g>
+
+  <!-- ============ Sliding Window ============ -->
+  <g transform="translate(196, 48)">
+    <rect width="168" height="252" rx="10" fill="white" stroke="#E2E8F0" stroke-width="1.2" filter="url(#shadow)"/>
+    <rect width="168" height="28" rx="10" fill="#059669"/>
+    <rect y="20" width="168" height="8" fill="#059669"/>
+    <text x="84" y="19" text-anchor="middle" font-size="12" font-weight="700" fill="white">Sliding</text>
+
+    <!-- Timeline -->
+    <line x1="16" y1="60" x2="152" y2="60" stroke="#CBD5E1" stroke-width="1.5"/>
+    <line x1="16" y1="56" x2="16" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="61" y1="56" x2="61" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="106" y1="56" x2="106" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="152" y1="56" x2="152" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <text x="16" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">0</text>
+    <text x="61" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">2s</text>
+    <text x="106" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">4s</text>
+    <text x="152" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">6s</text>
+
+    <!-- Overlapping windows -->
+    <rect x="16" y="82" width="68" height="35" rx="4" fill="#D1FAE5" stroke="#059669" stroke-width="1.2" opacity="0.8"/>
+    <text x="50" y="103" text-anchor="middle" font-size="11" font-weight="700" fill="#047857">w1</text>
+
+    <rect x="38" y="120" width="68" height="35" rx="4" fill="#A7F3D0" stroke="#059669" stroke-width="1.2" opacity="0.8"/>
+    <text x="72" y="141" text-anchor="middle" font-size="11" font-weight="700" fill="#047857">w2</text>
+
+    <!-- Properties -->
+    <line x1="16" y1="165" x2="152" y2="165" stroke="#E2E8F0" stroke-width="0.5"/>
+    <text x="84" y="185" text-anchor="middle" font-size="9" fill="#475569">Overlapping windows</text>
+    <rect x="26" y="195" width="116" height="22" rx="4" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="0.8"/>
+    <text x="84" y="210" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">slide &lt; size</text>
+    <text x="84" y="233" text-anchor="middle" font-size="8" fill="#64748B">e.g. sliding(size=3s, slide=1s)</text>
+    <rect x="26" y="240" width="116" height="22" rx="4" fill="#059669"/>
+    <text x="84" y="255" text-anchor="middle" font-size="9" font-weight="600" fill="white">window(MOD, SLIDING, ...)</text>
+  </g>
+
+  <!-- ============ Session Window ============ -->
+  <g transform="translate(374, 48)">
+    <rect width="168" height="252" rx="10" fill="white" stroke="#E2E8F0" stroke-width="1.2" filter="url(#shadow)"/>
+    <rect width="168" height="28" rx="10" fill="#D97706"/>
+    <rect y="20" width="168" height="8" fill="#D97706"/>
+    <text x="84" y="19" text-anchor="middle" font-size="12" font-weight="700" fill="white">Session</text>
+
+    <!-- Timeline -->
+    <line x1="16" y1="60" x2="152" y2="60" stroke="#CBD5E1" stroke-width="1.5"/>
+    <line x1="16" y1="56" x2="16" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="84" y1="56" x2="84" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="152" y1="56" x2="152" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <text x="16" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">0</text>
+    <text x="84" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">3s</text>
+    <text x="152" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">6s</text>
+
+    <!-- Variable-length sessions with gaps -->
+    <!-- Session 1: short -->
+    <rect x="16" y="82" width="30" height="30" rx="4" fill="#FEF3C7" stroke="#D97706" stroke-width="1.2"/>
+    <text x="31" y="101" text-anchor="middle" font-size="9" font-weight="700" fill="#92400E">s1</text>
+
+    <!-- Gap -->
+    <text x="62" y="101" text-anchor="middle" font-size="7" fill="#94A3B8" font-style="italic">gap</text>
+
+    <!-- Session 2: longer -->
+    <rect x="76" y="82" width="76" height="30" rx="4" fill="#FDE68A" stroke="#D97706" stroke-width="1.2"/>
+    <text x="114" y="101" text-anchor="middle" font-size="9" font-weight="700" fill="#92400E">s2 (longer)</text>
+
+    <!-- Gap indicator -->
+    <rect x="46" y="90" width="30" height="14" rx="3" fill="none" stroke="#94A3B8" stroke-width="0.6" stroke-dasharray="3,2"/>
+
+    <!-- Properties -->
+    <line x1="16" y1="125" x2="152" y2="125" stroke="#E2E8F0" stroke-width="0.5"/>
+    <text x="84" y="145" text-anchor="middle" font-size="9" fill="#475569">Variable-length, gap-separated</text>
+    <rect x="26" y="155" width="116" height="22" rx="4" fill="#FFF7ED" stroke="#FDE68A" stroke-width="0.8"/>
+    <text x="84" y="170" text-anchor="middle" font-size="9" font-weight="600" fill="#D97706">gap &gt; threshold → close</text>
+    <text x="84" y="193" text-anchor="middle" font-size="8" fill="#64748B">e.g. session(gap=30s)</text>
+    <rect x="26" y="200" width="116" height="22" rx="4" fill="#D97706"/>
+    <text x="84" y="215" text-anchor="middle" font-size="9" font-weight="600" fill="white">window(MOD, SESSION, ...)</text>
+  </g>
+
+  <!-- ============ Over Window ============ -->
+  <g transform="translate(552, 48)">
+    <rect width="168" height="252" rx="10" fill="white" stroke="#E2E8F0" stroke-width="1.2" filter="url(#shadow)"/>
+    <rect width="168" height="28" rx="10" fill="#7C3AED"/>
+    <rect y="20" width="168" height="8" fill="#7C3AED"/>
+    <text x="84" y="19" text-anchor="middle" font-size="12" font-weight="700" fill="white">Over</text>
+
+    <!-- Timeline -->
+    <line x1="16" y1="60" x2="152" y2="60" stroke="#CBD5E1" stroke-width="1.5"/>
+    <line x1="16" y1="56" x2="16" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="84" y1="56" x2="84" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="152" y1="56" x2="152" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <text x="16" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">0</text>
+    <text x="84" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">3s</text>
+    <text x="152" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">6s</text>
+
+    <!-- Single unbounded window -->
+    <rect x="16" y="82" width="136" height="35" rx="4" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="84" y="103" text-anchor="middle" font-size="11" font-weight="700" fill="#6D28D9">aggregate all</text>
+
+    <!-- Arrow showing continuous -->
+    <text x="84" y="133" text-anchor="middle" font-size="7" fill="#7C3AED" font-style="italic">← all data →</text>
+
+    <!-- Properties -->
+    <line x1="16" y1="145" x2="152" y2="145" stroke="#E2E8F0" stroke-width="0.5"/>
+    <text x="84" y="165" text-anchor="middle" font-size="9" fill="#475569">Unbounded window over key</text>
+    <rect x="26" y="175" width="116" height="22" rx="4" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="0.8"/>
+    <text x="84" y="190" text-anchor="middle" font-size="9" font-weight="600" fill="#7C3AED">per-key aggregate</text>
+    <text x="84" y="213" text-anchor="middle" font-size="8" fill="#64748B">e.g. key_by(...).over(count)</text>
+    <rect x="26" y="220" width="116" height="22" rx="4" fill="#7C3AED"/>
+    <text x="84" y="235" text-anchor="middle" font-size="9" font-weight="600" fill="white">window(MOD, OVER, ...)</text>
+  </g>
+
+  <!-- ============ Global Window ============ -->
+  <g transform="translate(730, 48)">
+    <rect width="168" height="252" rx="10" fill="white" stroke="#E2E8F0" stroke-width="1.2" filter="url(#shadow)"/>
+    <rect width="168" height="28" rx="10" fill="#64748B"/>
+    <rect y="20" width="168" height="8" fill="#64748B"/>
+    <text x="84" y="19" text-anchor="middle" font-size="12" font-weight="700" fill="white">Global</text>
+
+    <!-- Timeline -->
+    <line x1="16" y1="60" x2="152" y2="60" stroke="#CBD5E1" stroke-width="1.5"/>
+    <line x1="16" y1="56" x2="16" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="84" y1="56" x2="84" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <line x1="152" y1="56" x2="152" y2="64" stroke="#94A3B8" stroke-width="1"/>
+    <text x="16" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">0</text>
+    <text x="84" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">∞</text>
+    <text x="152" y="75" text-anchor="middle" font-size="7" fill="#94A3B8">∞</text>
+
+    <!-- All data in one window -->
+    <rect x="16" y="82" width="136" height="35" rx="4" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+    <text x="84" y="103" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">all data</text>
+
+    <!-- Arrow showing unbounded -->
+    <text x="84" y="133" text-anchor="middle" font-size="7" fill="#64748B" font-style="italic">← entire stream →</text>
+
+    <!-- Properties -->
+    <line x1="16" y1="145" x2="152" y2="145" stroke="#E2E8F0" stroke-width="0.5"/>
+    <text x="84" y="165" text-anchor="middle" font-size="9" fill="#475569">All records, single window</text>
+    <rect x="26" y="175" width="116" height="22" rx="4" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="0.8"/>
+    <text x="84" y="190" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">no boundaries</text>
+    <text x="84" y="213" text-anchor="middle" font-size="8" fill="#64748B">e.g. global()</text>
+    <rect x="26" y="220" width="116" height="22" rx="4" fill="#64748B"/>
+    <text x="84" y="235" text-anchor="middle" font-size="9" font-weight="600" fill="white">window(MOD, GLOBAL)</text>
+  </g>
+</svg>
