@@ -59,7 +59,7 @@ class AdaptiveFlow:
         self._stream_fn = stream_fn
         if controller is not None:
             self._controller = controller
-        elif viscosity is not None or policy is not None:
+        elif viscosity is not None or policy is not None or min_viscosity is not None or max_viscosity is not None:
             self._controller = ViscosityController(
                 initial=viscosity or Viscosity.HONEYED,
                 policy=policy or ViscosityPolicy.BALANCED,
@@ -96,7 +96,10 @@ class AdaptiveFlow:
 
     @property
     def granularity(self):
-        return self._controller.level
+        ctrl = self._controller
+        if isinstance(ctrl, ViscosityController):
+            return GranularityLevel(_VISC_TO_GRAN[ctrl.viscosity])
+        return ctrl.level
 
     @property
     def event_log(self):

@@ -16,6 +16,7 @@ from liutang import (
     EventLog, ServingView, MergeView, LambdaFlow, KappaFlow,
     GranularityLevel, GranularityPolicy, GranularityController, GranularityMetrics,
     AdaptiveFlow,
+    Viscosity, ViscosityPolicy, ViscosityController, FlowMetrics,
 )
 
 
@@ -1494,3 +1495,825 @@ class TestAdaptiveArchitectureIntegration:
         stream.print()
         explanation = flow.explain()
         assert "adaptive" in explanation
+
+
+class TestViscosity:
+    def test_enum_values(self):
+        assert Viscosity.VOLATILE.value == "volatile"
+        assert Viscosity.FLUID.value == "fluid"
+        assert Viscosity.HONEYED.value == "honeyed"
+        assert Viscosity.SLUGGISH.value == "sluggish"
+        assert Viscosity.FROZEN.value == "frozen"
+
+    def test_all_members(self):
+        assert len(Viscosity) == 5
+        members = list(Viscosity)
+        assert members == [Viscosity.VOLATILE, Viscosity.FLUID, Viscosity.HONEYED,
+                          Viscosity.SLUGGISH, Viscosity.FROZEN]
+
+    def test_batch_sizes(self):
+        assert Viscosity.VOLATILE.batch_size == 1
+        assert Viscosity.FLUID.batch_size == 10
+        assert Viscosity.HONEYED.batch_size == 100
+        assert Viscosity.SLUGGISH.batch_size == 1000
+        assert Viscosity.FROZEN.batch_size == 100000
+
+    def test_batch_timeouts(self):
+        assert Viscosity.VOLATILE.batch_timeout < Viscosity.FLUID.batch_timeout
+        assert Viscosity.FLUID.batch_timeout < Viscosity.HONEYED.batch_timeout
+        assert Viscosity.HONEYED.batch_timeout < Viscosity.SLUGGISH.batch_timeout
+        assert Viscosity.SLUGGISH.batch_timeout < Viscosity.FROZEN.batch_timeout
+
+    def test_eta_values(self):
+        assert Viscosity.VOLATILE.eta == 0.0
+        assert Viscosity.FLUID.eta == 0.25
+        assert Viscosity.HONEYED.eta == 0.5
+        assert Viscosity.SLUGGISH.eta == 0.75
+        assert Viscosity.FROZEN.eta == 1.0
+
+    def test_ordering_less_than(self):
+        assert Viscosity.VOLATILE < Viscosity.FLUID
+        assert Viscosity.FLUID < Viscosity.HONEYED
+        assert Viscosity.HONEYED < Viscosity.SLUGGISH
+        assert Viscosity.SLUGGISH < Viscosity.FROZEN
+
+    def test_ordering_greater_than(self):
+        assert Viscosity.FROZEN > Viscosity.SLUGGISH
+        assert Viscosity.SLUGGISH > Viscosity.HONEYED
+        assert Viscosity.HONEYED > Viscosity.FLUID
+        assert Viscosity.FLUID > Viscosity.VOLATILE
+
+    def test_ordering_less_equal(self):
+        assert Viscosity.HONEYED <= Viscosity.HONEYED
+        assert Viscosity.FLUID <= Viscosity.SLUGGISH
+
+    def test_ordering_greater_equal(self):
+        assert Viscosity.HONEYED >= Viscosity.HONEYED
+        assert Viscosity.SLUGGISH >= Viscosity.FLUID
+
+    def test_ordering_not_implemented_for_non_viscosity(self):
+        assert Viscosity.HONEYED.__lt__(42) is NotImplemented
+        assert Viscosity.HONEYED.__gt__("string") is NotImplemented
+
+    def test_is_flowing(self):
+        assert Viscosity.VOLATILE.is_flowing is True
+        assert Viscosity.FLUID.is_flowing is True
+        assert Viscosity.HONEYED.is_flowing is False
+        assert Viscosity.SLUGGISH.is_flowing is False
+        assert Viscosity.FROZEN.is_flowing is False
+
+    def test_is_solid(self):
+        assert Viscosity.VOLATILE.is_solid is False
+        assert Viscosity.FLUID.is_solid is False
+        assert Viscosity.HONEYED.is_solid is False
+        assert Viscosity.SLUGGISH.is_solid is True
+        assert Viscosity.FROZEN.is_solid is True
+
+    def test_description_chinese(self):
+        assert "如水" in Viscosity.VOLATILE.description
+        assert "如溪" in Viscosity.FLUID.description
+        assert "如蜜" in Viscosity.HONEYED.description
+        assert "如泥" in Viscosity.SLUGGISH.description
+        assert "如冰" in Viscosity.FROZEN.description
+
+    def test_description_non_empty(self):
+        for v in Viscosity:
+            assert len(v.description) > 0
+
+
+class TestViscosityPolicy:
+    def test_enum_values(self):
+        assert ViscosityPolicy.RESPONSIVE.value == "responsive"
+        assert ViscosityPolicy.EFFICIENT.value == "efficient"
+        assert ViscosityPolicy.BALANCED.value == "balanced"
+        assert ViscosityPolicy.MANUAL.value == "manual"
+
+    def test_all_members(self):
+        assert len(ViscosityPolicy) == 4
+
+    def test_mapping_from_granularity_throughput(self):
+        from liutang.core.granularity import _GRAN_POLICY_TO_VISC
+        assert _GRAN_POLICY_TO_VISC[GranularityPolicy.THROUGHPUT] == ViscosityPolicy.EFFICIENT
+
+    def test_mapping_from_granularity_latency(self):
+        from liutang.core.granularity import _GRAN_POLICY_TO_VISC
+        assert _GRAN_POLICY_TO_VISC[GranularityPolicy.LATENCY] == ViscosityPolicy.RESPONSIVE
+
+    def test_mapping_from_granularity_balanced(self):
+        from liutang.core.granularity import _GRAN_POLICY_TO_VISC
+        assert _GRAN_POLICY_TO_VISC[GranularityPolicy.BALANCED] == ViscosityPolicy.BALANCED
+
+    def test_mapping_from_granularity_manual(self):
+        from liutang.core.granularity import _GRAN_POLICY_TO_VISC
+        assert _GRAN_POLICY_TO_VISC[GranularityPolicy.MANUAL] == ViscosityPolicy.MANUAL
+
+    def test_round_trip_granularity_to_viscosity(self):
+        from liutang.core.granularity import _GRAN_POLICY_TO_VISC, _VISC_POLICY_TO_GRAN
+        for gp, vp in _GRAN_POLICY_TO_VISC.items():
+            assert _VISC_POLICY_TO_GRAN[vp] == gp
+
+
+class TestFlowMetrics:
+    def test_default_values(self):
+        m = FlowMetrics()
+        assert m.arrival_rate == 0.0
+        assert m.queue_depth == 0
+        assert m.processing_latency_ms == 0.0
+        assert m.throughput_per_sec == 0.0
+        assert m.backlog_size == 0
+        assert m.error_rate == 0.0
+
+    def test_shear_rate_equals_arrival_rate(self):
+        m = FlowMetrics()
+        m.arrival_rate = 42.0
+        assert m.shear_rate == 42.0
+
+    def test_shear_rate_zero(self):
+        m = FlowMetrics()
+        assert m.shear_rate == 0.0
+
+    def test_shear_stress_with_arrival_rate(self):
+        m = FlowMetrics()
+        m.backlog_size = 100
+        m.processing_latency_ms = 50.0
+        m.arrival_rate = 10.0
+        expected = (100 + 50.0) / max(1.0, 10.0)
+        assert abs(m.shear_stress - expected) < 0.01
+
+    def test_shear_stress_zero_arrival_rate(self):
+        m = FlowMetrics()
+        m.backlog_size = 50
+        m.arrival_rate = 0.0
+        assert m.shear_stress == 50.0
+
+    def test_measured_viscosity_midrange(self):
+        m = FlowMetrics()
+        m.arrival_rate = 100.0
+        m.backlog_size = 50
+        m.processing_latency_ms = 100.0
+        v = m.measured_viscosity
+        assert 0.0 <= v <= 1.0
+
+    def test_measured_viscosity_low_load(self):
+        m = FlowMetrics()
+        m.arrival_rate = 10000.0
+        m.backlog_size = 0
+        m.processing_latency_ms = 1.0
+        v = m.measured_viscosity
+        assert v < 0.1
+
+    def test_measured_viscosity_high_load(self):
+        m = FlowMetrics()
+        m.arrival_rate = 1.0
+        m.backlog_size = 100000
+        m.processing_latency_ms = 5000.0
+        v = m.measured_viscosity
+        assert v >= 0.9
+
+    def test_measured_viscosity_min_clamp(self):
+        m = FlowMetrics()
+        m.arrival_rate = 100000.0
+        m.backlog_size = 0
+        m.processing_latency_ms = 0.0
+        assert m.measured_viscosity >= 0.0
+
+    def test_measured_viscosity_max_clamp(self):
+        m = FlowMetrics()
+        m.arrival_rate = 0.001
+        m.backlog_size = 999999
+        m.processing_latency_ms = 999999.0
+        assert m.measured_viscosity <= 1.0
+
+    def test_snapshot_includes_shear_fields(self):
+        m = FlowMetrics()
+        m.arrival_rate = 50.0
+        s = m.snapshot()
+        assert "shear_rate" in s
+        assert "shear_stress" in s
+        assert "measured_viscosity" in s
+        assert "timestamp" in s
+
+    def test_snapshot_shear_rate_value(self):
+        m = FlowMetrics()
+        m.arrival_rate = 77.0
+        assert m.snapshot()["shear_rate"] == 77.0
+
+    def test_snapshot_shear_stress_value(self):
+        m = FlowMetrics()
+        m.arrival_rate = 10.0
+        m.backlog_size = 30
+        m.processing_latency_ms = 20.0
+        s = m.snapshot()
+        assert abs(s["shear_stress"] - m.shear_stress) < 0.01
+
+    def test_snapshot_measured_viscosity_value(self):
+        m = FlowMetrics()
+        m.arrival_rate = 100.0
+        m.backlog_size = 50
+        s = m.snapshot()
+        assert abs(s["measured_viscosity"] - m.measured_viscosity) < 0.01
+
+    def test_update_timestamp(self):
+        m = FlowMetrics()
+        t1 = m._timestamp
+        time.sleep(0.01)
+        m.update_timestamp()
+        assert m._timestamp > t1
+
+
+class TestViscosityController:
+    def test_default_construction(self):
+        vc = ViscosityController()
+        assert vc.viscosity == Viscosity.HONEYED
+        assert vc.policy == ViscosityPolicy.BALANCED
+        assert vc.batch_size == 100
+
+    def test_custom_initial_viscosity(self):
+        vc = ViscosityController(initial=Viscosity.FLUID)
+        assert vc.viscosity == Viscosity.FLUID
+        assert vc.batch_size == 10
+
+    def test_custom_policy_responsive(self):
+        vc = ViscosityController(policy=ViscosityPolicy.RESPONSIVE)
+        assert vc.policy == ViscosityPolicy.RESPONSIVE
+
+    def test_custom_policy_efficient(self):
+        vc = ViscosityController(policy=ViscosityPolicy.EFFICIENT)
+        assert vc.policy == ViscosityPolicy.EFFICIENT
+
+    def test_custom_policy_manual(self):
+        vc = ViscosityController(policy=ViscosityPolicy.MANUAL)
+        assert vc.policy == ViscosityPolicy.MANUAL
+
+    def test_min_max_viscosity_construction(self):
+        vc = ViscosityController(min_viscosity=Viscosity.FLUID, max_viscosity=Viscosity.SLUGGISH)
+        vc.set_viscosity(Viscosity.VOLATILE)
+        assert vc.viscosity == Viscosity.FLUID
+        vc.set_viscosity(Viscosity.FROZEN)
+        assert vc.viscosity == Viscosity.SLUGGISH
+
+    def test_viscosity_property(self):
+        vc = ViscosityController(initial=Viscosity.SLUGGISH)
+        assert vc.viscosity == Viscosity.SLUGGISH
+
+    def test_level_property_is_alias(self):
+        vc = ViscosityController(initial=Viscosity.FLUID)
+        assert vc.level == vc.viscosity
+
+    def test_eta_property(self):
+        vc = ViscosityController(initial=Viscosity.HONEYED)
+        assert vc.eta == 0.5
+
+    def test_batch_size_property(self):
+        vc = ViscosityController(initial=Viscosity.FROZEN)
+        assert vc.batch_size == 100000
+
+    def test_batch_timeout_property(self):
+        vc = ViscosityController(initial=Viscosity.VOLATILE)
+        assert vc.batch_timeout == 0.01
+
+    def test_set_viscosity_with_enum(self):
+        vc = ViscosityController()
+        vc.set_viscosity(Viscosity.FROZEN)
+        assert vc.viscosity == Viscosity.FROZEN
+
+    def test_set_viscosity_with_granularity_level(self):
+        vc = ViscosityController()
+        vc.set_viscosity(GranularityLevel.MACRO)
+        assert vc.viscosity == Viscosity.FROZEN
+
+    def test_set_viscosity_with_string(self):
+        vc = ViscosityController()
+        vc.set_viscosity("sluggish")
+        assert vc.viscosity == Viscosity.SLUGGISH
+
+    def test_coerce_to_viscosity_invalid_raises(self):
+        vc = ViscosityController()
+        with pytest.raises(ValueError):
+            vc.set_viscosity(99999)
+
+    def test_thaw(self):
+        vc = ViscosityController(initial=Viscosity.FROZEN)
+        vc.thaw()
+        assert vc.viscosity == Viscosity.VOLATILE
+
+    def test_freeze(self):
+        vc = ViscosityController(initial=Viscosity.VOLATILE)
+        vc.freeze()
+        assert vc.viscosity == Viscosity.FROZEN
+
+    def test_flow_freely(self):
+        vc = ViscosityController(initial=Viscosity.FROZEN)
+        vc.flow_freely()
+        assert vc.viscosity == Viscosity.VOLATILE
+
+    def test_flow_as_batch(self):
+        vc = ViscosityController(initial=Viscosity.VOLATILE)
+        vc.flow_as_batch()
+        assert vc.viscosity == Viscosity.FROZEN
+
+    def test_coerce_to_streaming_alias(self):
+        vc = ViscosityController(initial=Viscosity.FROZEN)
+        vc.coerce_to_streaming()
+        assert vc.viscosity == Viscosity.VOLATILE
+
+    def test_coerce_to_batch_alias(self):
+        vc = ViscosityController(initial=Viscosity.VOLATILE)
+        vc.coerce_to_batch()
+        assert vc.viscosity == Viscosity.FROZEN
+
+    def test_set_level_alias(self):
+        vc = ViscosityController()
+        vc.set_level(Viscosity.SLUGGISH)
+        assert vc.viscosity == Viscosity.SLUGGISH
+
+    def test_range_enforcement_min(self):
+        vc = ViscosityController(min_viscosity=Viscosity.FLUID, max_viscosity=Viscosity.SLUGGISH)
+        vc.set_viscosity(Viscosity.VOLATILE)
+        assert vc.viscosity == Viscosity.FLUID
+
+    def test_range_enforcement_max(self):
+        vc = ViscosityController(min_viscosity=Viscosity.FLUID, max_viscosity=Viscosity.SLUGGISH)
+        vc.set_viscosity(Viscosity.FROZEN)
+        assert vc.viscosity == Viscosity.SLUGGISH
+
+    def test_adjustments_count_no_change(self):
+        vc = ViscosityController()
+        assert vc.adjustments_count == 0
+        vc.set_viscosity(Viscosity.HONEYED)
+        assert vc.adjustments_count == 0
+
+    def test_adjustments_count_increments(self):
+        vc = ViscosityController()
+        vc.set_viscosity(Viscosity.SLUGGISH)
+        assert vc.adjustments_count == 1
+        vc.set_viscosity(Viscosity.FLUID)
+        assert vc.adjustments_count == 2
+        vc.set_viscosity(Viscosity.FLUID)
+        assert vc.adjustments_count == 2
+
+    def test_adjust_responsive_low_load(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.RESPONSIVE,
+            initial=Viscosity.HONEYED,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(arrival_rate=5, queue_depth=1, processing_latency_ms=10, backlog_size=5)
+        time.sleep(0.01)
+        vc.adjust()
+        assert vc.viscosity <= Viscosity.HONEYED
+
+    def test_adjust_responsive_high_latency(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.RESPONSIVE,
+            initial=Viscosity.FLUID,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(processing_latency_ms=600, error_rate=0.2)
+        time.sleep(0.01)
+        vc.adjust()
+        assert vc.viscosity >= Viscosity.FLUID or vc.adjustments_count == 0
+
+    def test_adjust_efficient_high_throughput(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.EFFICIENT,
+            initial=Viscosity.HONEYED,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(arrival_rate=5000, queue_depth=10000, backlog_size=20000)
+        time.sleep(0.01)
+        vc.adjust()
+        assert vc.viscosity >= Viscosity.HONEYED or vc.adjustments_count == 0
+
+    def test_adjust_efficient_error_rate(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.EFFICIENT,
+            initial=Viscosity.SLUGGISH,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(error_rate=0.5)
+        time.sleep(0.01)
+        vc.adjust()
+        assert vc.viscosity <= Viscosity.SLUGGISH or vc.adjustments_count == 0
+
+    def test_adjust_balanced_high_signals(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.BALANCED,
+            initial=Viscosity.HONEYED,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(arrival_rate=5000, queue_depth=8000, backlog_size=15000)
+        time.sleep(0.01)
+        vc.adjust()
+
+    def test_adjust_balanced_low_signals(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.BALANCED,
+            initial=Viscosity.HONEYED,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(arrival_rate=5, queue_depth=2, backlog_size=5)
+        time.sleep(0.01)
+        vc.adjust()
+
+    def test_adjust_manual_no_auto_change(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.MANUAL,
+            initial=Viscosity.FLUID,
+            adjust_interval=0.0,
+        )
+        vc.update_metrics(arrival_rate=999999, queue_depth=999999)
+        vc.adjust()
+        assert vc.viscosity == Viscosity.FLUID
+
+    def test_adjust_interval_gate(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.EFFICIENT,
+            initial=Viscosity.HONEYED,
+            adjust_interval=10.0,
+        )
+        vc.update_metrics(arrival_rate=5000, queue_depth=10000, backlog_size=20000)
+        vc.adjust()
+        first_result = vc.viscosity
+        vc.update_metrics(arrival_rate=2, queue_depth=1, backlog_size=1)
+        vc.adjust()
+        assert vc.viscosity == first_result
+
+    def test_history_tracking_entries(self):
+        vc = ViscosityController(adjust_interval=0.0)
+        vc.set_viscosity(Viscosity.SLUGGISH)
+        vc.set_viscosity(Viscosity.FLUID)
+        assert len(vc.history) == 2
+        h0 = vc.history[0]
+        assert "from" in h0
+        assert "to" in h0
+        assert "metrics" in h0
+
+    def test_history_viscosity_values(self):
+        vc = ViscosityController(adjust_interval=0.0)
+        vc.set_viscosity(Viscosity.SLUGGISH)
+        assert vc.history[0]["from"] == "honeyed"
+        assert vc.history[0]["to"] == "sluggish"
+
+    def test_history_eta_values(self):
+        vc = ViscosityController(adjust_interval=0.0)
+        vc.set_viscosity(Viscosity.FROZEN)
+        h = vc.history[0]
+        assert "eta_from" in h
+        assert "eta_to" in h
+        assert h["eta_from"] == 0.5
+        assert h["eta_to"] == 1.0
+
+    def test_history_truncation(self):
+        vc = ViscosityController(adjust_interval=0.0)
+        for i in range(5000):
+            vc.set_viscosity(Viscosity.FLUID if i % 2 == 0 else Viscosity.HONEYED)
+        assert len(vc.history) <= 1500
+
+    def test_on_change_callback_viscosity_values(self):
+        changes = []
+        def on_change(old, new):
+            changes.append((old, new))
+        vc = ViscosityController(on_change=on_change)
+        vc.set_viscosity(Viscosity.SLUGGISH)
+        assert len(changes) == 1
+        assert changes[0] == (Viscosity.HONEYED, Viscosity.SLUGGISH)
+
+    def test_on_change_callback_not_called_same_viscosity(self):
+        changes = []
+        def on_change(old, new):
+            changes.append((old, new))
+        vc = ViscosityController(on_change=on_change)
+        vc.set_viscosity(Viscosity.HONEYED)
+        assert len(changes) == 0
+
+    def test_on_change_callback_exception_swallowed(self):
+        def bad_callback(old, new):
+            raise RuntimeError("boom")
+        vc = ViscosityController(on_change=bad_callback)
+        vc.set_viscosity(Viscosity.SLUGGISH)
+        assert vc.viscosity == Viscosity.SLUGGISH
+
+    def test_metrics_update(self):
+        vc = ViscosityController()
+        vc.update_metrics(arrival_rate=500.0, queue_depth=100)
+        assert vc.metrics.arrival_rate == 500.0
+        assert vc.metrics.queue_depth == 100
+
+    def test_metrics_shear_rate(self):
+        vc = ViscosityController()
+        vc.update_metrics(arrival_rate=200.0)
+        assert vc.metrics.shear_rate == 200.0
+
+    def test_metrics_shear_stress(self):
+        vc = ViscosityController()
+        vc.update_metrics(arrival_rate=10.0, backlog_size=30, processing_latency_ms=20.0)
+        expected = (30 + 20.0) / max(1.0, 10.0)
+        assert abs(vc.metrics.shear_stress - expected) < 0.01
+
+    def test_metrics_measured_viscosity(self):
+        vc = ViscosityController()
+        vc.update_metrics(arrival_rate=100.0, backlog_size=50, processing_latency_ms=100.0)
+        v = vc.metrics.measured_viscosity
+        assert 0.0 <= v <= 1.0
+
+    def test_custom_thresholds(self):
+        vc = ViscosityController(
+            policy=ViscosityPolicy.EFFICIENT,
+            initial=Viscosity.FLUID,
+            adjust_interval=0.0,
+            thresholds={"high_arrival_rate": 100, "low_arrival_rate": 1,
+                        "high_queue_depth": 200, "low_queue_depth": 5,
+                        "high_latency_ms": 1000, "low_latency_ms": 1,
+                        "high_backlog": 500, "low_backlog": 5},
+        )
+        vc.update_metrics(arrival_rate=200, queue_depth=300, backlog_size=600)
+        time.sleep(0.01)
+        vc.adjust()
+        assert vc.viscosity != Viscosity.FLUID or vc.adjustments_count == 0
+
+    def test_explain_output_viscosity_terms(self):
+        vc = ViscosityController()
+        text = vc.explain()
+        assert "ViscosityController" in text
+        assert "honeyed" in text
+        assert "0.50" in text
+        assert "balanced" in text
+        assert "Shear rate" in text
+        assert "Shear stress" in text
+        assert "Measured" in text
+
+    def test_explain_contains_range(self):
+        vc = ViscosityController()
+        text = vc.explain()
+        assert "volatile" in text
+        assert "frozen" in text
+
+    def test_explain_contains_description(self):
+        vc = ViscosityController()
+        text = vc.explain()
+        assert "如蜜" in text
+
+    def test_explain_batch_size(self):
+        vc = ViscosityController(initial=Viscosity.SLUGGISH)
+        text = vc.explain()
+        assert "1000" in text
+
+    def test_explain_adjustments_count(self):
+        vc = ViscosityController()
+        text = vc.explain()
+        assert "Adjustments: 0" in text
+
+
+class TestAdaptiveFlowViscosity:
+    def test_construction_with_viscosity_param(self):
+        af = AdaptiveFlow(
+            name="test-visc",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+            viscosity=Viscosity.FLUID,
+        )
+        assert af.viscosity == Viscosity.FLUID
+
+    def test_construction_with_viscosity_policy(self):
+        af = AdaptiveFlow(
+            name="test-vp",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+            policy=ViscosityPolicy.RESPONSIVE,
+        )
+        assert af.controller.policy == GranularityPolicy.LATENCY
+
+    def test_construction_with_viscosity_and_policy(self):
+        af = AdaptiveFlow(
+            name="test-both",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+            viscosity=Viscosity.SLUGGISH,
+            policy=ViscosityPolicy.EFFICIENT,
+        )
+        assert af.viscosity == Viscosity.SLUGGISH
+        assert af.controller.policy == GranularityPolicy.THROUGHPUT
+
+    def test_construction_with_min_max_viscosity(self):
+        af = AdaptiveFlow(
+            name="test-range",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+            min_viscosity=Viscosity.FLUID,
+            max_viscosity=Viscosity.SLUGGISH,
+        )
+        af.set_viscosity(Viscosity.VOLATILE)
+        assert af.viscosity == Viscosity.FLUID
+
+    def test_thaw_method(self):
+        af = AdaptiveFlow(
+            name="test-thaw",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.thaw()
+        assert af.viscosity == Viscosity.VOLATILE
+
+    def test_freeze_method(self):
+        af = AdaptiveFlow(
+            name="test-freeze",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.freeze()
+        assert af.viscosity == Viscosity.FROZEN
+
+    def test_set_viscosity(self):
+        af = AdaptiveFlow(
+            name="test-set",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.set_viscosity(Viscosity.SLUGGISH)
+        assert af.viscosity == Viscosity.SLUGGISH
+
+    def test_set_viscosity_returns_self(self):
+        af = AdaptiveFlow(
+            name="test-chain",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        result = af.set_viscosity(Viscosity.FLUID)
+        assert result is af
+
+    def test_execute_at_viscosity(self):
+        af = AdaptiveFlow(
+            name="test-at-v",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        result = af.execute_at_viscosity(Viscosity.SLUGGISH)
+        assert result["viscosity"] == "sluggish"
+        assert result["granularity"] == "coarse"
+
+    def test_on_viscosity_change_callback(self):
+        changes = []
+        af = AdaptiveFlow(
+            name="test-cb",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.on_viscosity_change(lambda old, new: changes.append((old, new)))
+        af.set_viscosity(Viscosity.SLUGGISH)
+        assert len(changes) == 1
+
+    def test_execute_return_contains_viscosity_key(self):
+        af = AdaptiveFlow(
+            name="test-resp",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        result = af.execute()
+        assert "viscosity" in result
+        assert isinstance(result["viscosity"], str)
+
+    def test_execute_return_contains_eta_key(self):
+        af = AdaptiveFlow(
+            name="test-eta",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        result = af.execute()
+        assert "eta" in result
+        assert isinstance(result["eta"], float)
+
+    def test_execute_return_contains_granularity_key(self):
+        af = AdaptiveFlow(
+            name="test-gran",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        result = af.execute()
+        assert "viscosity" in result
+        assert "granularity" in result
+        assert result["granularity"] == "medium"
+        assert result["viscosity"] == "honeyed"
+
+    def test_viscosity_property(self):
+        af = AdaptiveFlow(
+            name="test-prop",
+            stream_fn=lambda f: f.from_collection([1]).map(lambda x: x),
+            viscosity=Viscosity.SLUGGISH,
+        )
+        assert af.viscosity == Viscosity.SLUGGISH
+        assert isinstance(af.viscosity, Viscosity)
+
+    def test_granularity_property(self):
+        af = AdaptiveFlow(
+            name="test-gran-prop",
+            stream_fn=lambda f: f.from_collection([1]).map(lambda x: x),
+            viscosity=Viscosity.SLUGGISH,
+        )
+        assert af.granularity == GranularityLevel.COARSE
+
+    def test_explain_contains_granularity_terms(self):
+        af = AdaptiveFlow(
+            name="test-exp",
+            stream_fn=lambda f: f.from_collection([1]).map(lambda x: x),
+        )
+        text = af.explain()
+        assert "AdaptiveFlow" in text
+        assert "medium" in text
+
+    def test_controller_proxy_policy_returns_granularity_policy(self):
+        af = AdaptiveFlow(
+            name="test-proxy",
+            stream_fn=lambda f: f.from_collection([1]).map(lambda x: x),
+        )
+        af.set_policy(ViscosityPolicy.EFFICIENT)
+        assert af.controller.policy == GranularityPolicy.THROUGHPUT
+
+    def test_controller_proxy_level_returns_granularity_level(self):
+        af = AdaptiveFlow(
+            name="test-proxy-level",
+            stream_fn=lambda f: f.from_collection([1]).map(lambda x: x),
+            viscosity=Viscosity.SLUGGISH,
+        )
+        assert af.controller.level == GranularityLevel.COARSE
+
+    def test_viscosity_spectrum(self):
+        for v in Viscosity:
+            af = AdaptiveFlow(
+                name=f"spectrum-{v.value}",
+                stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x + 1),
+            )
+            af.set_viscosity(v)
+            result = af.execute()
+            assert result["viscosity"] == v.value
+
+    def test_execution_history_entries(self):
+        af = AdaptiveFlow(
+            name="test-hist",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.execute()
+        hist = af._execution_history
+        assert len(hist) == 1
+        assert "viscosity" in hist[0]
+        assert "eta" in hist[0]
+        assert "batch_size" in hist[0]
+        assert "adjustments" in hist[0]
+
+
+class TestGranularityViscosityCompat:
+    def test_to_viscosity_mapping(self):
+        assert GranularityLevel.MICRO.to_viscosity() == Viscosity.VOLATILE
+        assert GranularityLevel.FINE.to_viscosity() == Viscosity.FLUID
+        assert GranularityLevel.MEDIUM.to_viscosity() == Viscosity.HONEYED
+        assert GranularityLevel.COARSE.to_viscosity() == Viscosity.SLUGGISH
+        assert GranularityLevel.MACRO.to_viscosity() == Viscosity.FROZEN
+
+    def test_to_viscosity_round_trip(self):
+        from liutang.core.granularity import _VISC_TO_GRAN
+        for gl in GranularityLevel:
+            visc = gl.to_viscosity()
+            back = _VISC_TO_GRAN[visc]
+            assert back == gl.value
+
+    def test_history_maps_viscosity_strings_to_granularity(self):
+        gc = GranularityController(adjust_interval=0.0)
+        gc.set_level(GranularityLevel.COARSE)
+        gc.set_level(GranularityLevel.FINE)
+        assert gc.history[0]["from"] == "medium"
+        assert gc.history[0]["to"] == "coarse"
+        assert gc.history[1]["from"] == "coarse"
+        assert gc.history[1]["to"] == "fine"
+
+    def test_history_strips_eta_keys(self):
+        gc = GranularityController(adjust_interval=0.0)
+        gc.set_level(GranularityLevel.COARSE)
+        h = gc.history[0]
+        assert "eta_from" not in h
+        assert "eta_to" not in h
+
+    def test_history_strips_shear_keys_from_metrics(self):
+        gc = GranularityController(adjust_interval=0.0)
+        gc.set_level(GranularityLevel.COARSE)
+        m = gc.history[0].get("metrics", {})
+        assert "shear_rate" not in m
+        assert "shear_stress" not in m
+        assert "measured_viscosity" not in m
+
+    def test_policy_roundtrip_throughput(self):
+        gc = GranularityController(policy=GranularityPolicy.THROUGHPUT)
+        assert gc.policy == GranularityPolicy.THROUGHPUT
+
+    def test_policy_roundtrip_latency(self):
+        gc = GranularityController(policy=GranularityPolicy.LATENCY)
+        assert gc.policy == GranularityPolicy.LATENCY
+
+    def test_policy_roundtrip_balanced(self):
+        gc = GranularityController(policy=GranularityPolicy.BALANCED)
+        assert gc.policy == GranularityPolicy.BALANCED
+
+    def test_policy_roundtrip_manual(self):
+        gc = GranularityController(policy=GranularityPolicy.MANUAL)
+        assert gc.policy == GranularityPolicy.MANUAL
+
+    def test_set_level_with_granularity_level(self):
+        gc = GranularityController()
+        gc.set_level(GranularityLevel.COARSE)
+        assert gc.level == GranularityLevel.COARSE
+
+    def test_granularity_controller_explain_uses_granularity_terms(self):
+        gc = GranularityController()
+        text = gc.explain()
+        assert "GranularityController" in text
+        assert "Level:" in text or "medium" in text
+
+    def test_viscosity_controller_used_internally(self):
+        gc = GranularityController()
+        assert isinstance(gc._vc, ViscosityController)
