@@ -397,3 +397,33 @@ class KeyedState:
 
     def put(self, k: Any, v: Any) -> None:
         self._backend.put_map(self._key, k, v)
+
+
+class JsonFileStateBackend(MemoryStateBackend):
+    def __init__(self, directory: str):
+        super().__init__()
+        self._directory = directory
+        import os
+        os.makedirs(directory, exist_ok=True)
+
+    def _checkpoint_path(self, name: str = "state") -> str:
+        import os
+        return os.path.join(self._directory, f"{name}.json")
+
+    def save(self, name: str = "state") -> None:
+        import json
+        snapshot = self.checkpoint()
+        path = self._checkpoint_path(name)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, default=str, indent=2)
+
+    def load(self, name: str = "state") -> bool:
+        import json
+        import os
+        path = self._checkpoint_path(name)
+        if not os.path.exists(path):
+            return False
+        with open(path, "r", encoding="utf-8") as f:
+            snapshot = json.load(f)
+        self.restore(snapshot)
+        return True

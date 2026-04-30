@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import time
@@ -10,17 +11,17 @@ import csv
 import io
 import random
 import sys
-import os
 from typing import Any, Dict, List, Optional
 
 from liutang.core.flow import Flow
-from liutang.core.stream import RuntimeMode, TableStream
+from liutang.core.stream import RuntimeMode, TableStream, DeliveryMode
 from liutang.core.connector import (
     SourceKind, SinkKind, CollectionSource, FileSource, KafkaSource,
     DatagenSource, SocketSource, GeneratorSource,
     PrintSink, FileSink, CallbackSink, CollectSink,
 )
 from liutang.core.state import WatermarkStrategy, KeyedProcessFunction, ProcessFunction
+from liutang.core.errors import PipelineError
 from liutang.engine.runner import StreamRunner, PipelineBuilder
 
 
@@ -28,11 +29,22 @@ class Executor:
     def __init__(self, flow: Flow):
         self._flow = flow
         self._collector: List[Any] = []
+        self._checkpoint_counter = 0
 
     def execute(self) -> Any:
+        self._validate()
         if self._flow.mode == RuntimeMode.BATCH:
             return self._execute_batch()
         return self._execute_streaming()
+
+    def _validate(self) -> None:
+        if not self._flow.sources:
+            raise PipelineError("Flow has no sources. Add a source before executing.")
+        for src in self._flow.sources:
+            connector = src["connector"]
+            if connector.kind() == SourceKind.FILE:
+                if hasattr(connector, 'path') and not os.path.exists(connector.path):
+                    raise PipelineError(f"File source path does not exist: {connector.path}")
 
     def explain(self) -> str:
         lines = [
@@ -59,6 +71,8 @@ class Executor:
         for src in self._flow.sources:
             connector = src["connector"]
             data = self._read_source(connector)
+            if self._flow._schema_enforcement and src.get("schema"):
+                data = self._enforce_schema(data, src["schema"])
             source_id = src["id"]
             processed = False
             for sink in self._flow.sinks:
@@ -79,6 +93,7 @@ class Executor:
                     self._write_sink(connector, sink_data)
                     results[stream.id] = sink_data
                     processed = True
+                    self._maybe_checkpoint(runner)
             if not processed:
                 for s in self._flow._streams:
                     if s.id.startswith(source_id):
@@ -125,6 +140,7 @@ class Executor:
             )
             watermark_strategy = stream_obj._watermark_strategy if stream_obj else None
             stop_event = stop_events.get(src_id, threading.Event())
+            late_collector = []
             def make_callback(sink_connector: Any, collect_list: Optional[list] = None) -> Any:
                 def cb(record: Any) -> None:
                     if isinstance(sink_connector, CollectSink):
@@ -173,17 +189,23 @@ class Executor:
                 self._stream_datagen(connector, src_queue, stop_event)
             elif connector.kind() == SourceKind.SOCKET:
                 self._stream_socket(connector, src_queue, stop_event)
+        except (KeyboardInterrupt, SystemExit):
+            src_queue.put(None)
+            raise
         except Exception as e:
             print(f"[liutang] source error: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             src_queue.put(None)
 
     def _stream_file(self, connector: FileSource, src_queue: queue.Queue, stop_event: threading.Event) -> None:
-        with open(connector.path, "r", encoding="utf-8") as f:
-            for line in f:
-                if stop_event.is_set():
-                    break
-                src_queue.put(line.rstrip("\n"))
+        try:
+            with open(connector.path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if stop_event.is_set():
+                        break
+                    src_queue.put(line.rstrip("\n"))
+        except FileNotFoundError as e:
+            print(f"[liutang] file not found: {connector.path}", file=sys.stderr)
         src_queue.put(None)
 
     def _stream_kafka(self, connector: KafkaSource, src_queue: queue.Queue, stop_event: threading.Event) -> None:
@@ -269,10 +291,14 @@ class Executor:
         stop_event: threading.Event,
         watermark_strategy: Optional[WatermarkStrategy],
     ) -> None:
+        late_callback = None
+        if self._flow.config.get("late_output"):
+            late_callback = self._flow.config["late_output"]
         runner.run_streaming(src_queue, sink_callback, stop_event,
                              batch_size=self._flow.config.get("batch_size", 100),
                              batch_timeout=self._flow.config.get("batch_timeout", 1.0),
-                             watermark_strategy=watermark_strategy)
+                             watermark_strategy=watermark_strategy,
+                             late_callback=late_callback)
 
     def _read_source(self, connector: Any) -> List[Any]:
         if connector.kind() == SourceKind.COLLECTION:
@@ -332,7 +358,6 @@ class Executor:
                 self._write_sink_item(connector, item)
 
     def _write_sink_item(self, connector: Any, item: Any) -> None:
-        from liutang.core.stream import DeliveryMode
         if self._flow.delivery_mode == DeliveryMode.AT_MOST_ONCE:
             try:
                 if connector.kind() == SinkKind.PRINT:
@@ -341,6 +366,8 @@ class Executor:
                     connector.func(item)
                 elif connector.kind() == SinkKind.COLLECT:
                     connector.results.append(item)
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except Exception:
                 pass
         elif self._flow.delivery_mode == DeliveryMode.AT_LEAST_ONCE:
@@ -353,6 +380,8 @@ class Executor:
                     elif connector.kind() == SinkKind.COLLECT:
                         connector.results.append(item)
                     break
+                except (KeyboardInterrupt, SystemExit):
+                    raise
                 except Exception:
                     if attempt == self._flow.max_retries:
                         raise
@@ -367,6 +396,7 @@ class Executor:
     def _apply_table_ops(self, data: List[Any], operations: List[Dict[str, Any]],
                           schema: Any = None) -> List[Any]:
         result = list(data)
+        group_keys = None
         for op in operations:
             op_type = op["type"]
             if op_type == "where":
@@ -386,12 +416,125 @@ class Executor:
                     result = new_result
             elif op_type == "group_by":
                 keys = op["keys"]
+                group_keys = keys
                 grouped: Dict[tuple, List[Any]] = {}
                 for row in result:
                     key_values = tuple(row[k] if isinstance(row, dict) else getattr(row, k) for k in keys)
                     grouped.setdefault(key_values, []).append(row)
                 result = list(grouped.values())
+            elif op_type == "order_by":
+                keys = op["keys"]
+                def sort_key(row):
+                    if isinstance(row, dict):
+                        return tuple(row.get(k, "") for k in keys)
+                    return tuple(getattr(row, k, "") for k in keys)
+                result = sorted(result, key=sort_key)
+            elif op_type == "limit":
+                n = op["n"]
+                result = result[:n]
+            elif op_type == "grouped_count":
+                if isinstance(result, list) and result and isinstance(result[0], list):
+                    result = [len(group) for group in result]
+            elif op_type == "grouped_sum":
+                field = op["field"]
+                if isinstance(result, list) and result and isinstance(result[0], list):
+                    new_result = []
+                    for group in result:
+                        if group and isinstance(group[0], dict):
+                            s = sum(row.get(field if isinstance(field, str) else list(row.keys())[field], 0) for row in group)
+                        else:
+                            s = sum(self._extract_table_field(item, field) for item in group)
+                        new_result.append(s)
+                    result = new_result
+            elif op_type == "grouped_avg":
+                field = op["field"]
+                if isinstance(result, list) and result and isinstance(result[0], list):
+                    new_result = []
+                    for group in result:
+                        if group:
+                            if isinstance(group[0], dict):
+                                vals = [row.get(field if isinstance(field, str) else list(row.keys())[field], 0) for row in group]
+                            else:
+                                vals = [self._extract_table_field(item, field) for item in group]
+                            new_result.append(sum(vals) / len(vals) if vals else 0)
+                        else:
+                            new_result.append(0)
+                    result = new_result
+            elif op_type == "grouped_select":
+                expressions = op.get("expressions", ())
+                if isinstance(result, list) and result and isinstance(result[0], list):
+                    new_result = []
+                    for group in result:
+                        if expressions and callable(expressions[0]):
+                            new_result.append(expressions[0](group))
+                        else:
+                            new_result.append(group)
+                    result = new_result
+            elif op_type == "windowed_select":
+                expressions = op.get("expressions", ())
+                if expressions and callable(expressions[0]):
+                    result = [expressions[0](row) for row in result]
         return result
+
+    @staticmethod
+    def _extract_table_field(item: Any, field: Any) -> Any:
+        if isinstance(item, (int, float)):
+            return item
+        if isinstance(item, dict):
+            if isinstance(field, str):
+                return item.get(field, 0)
+            return list(item.values())[field] if field < len(item) else 0
+        if isinstance(item, (list, tuple)):
+            return item[field] if field < len(item) else 0
+        return item
+
+    def _maybe_checkpoint(self, runner: StreamRunner) -> None:
+        if self._flow.checkpoint_dir is None:
+            return
+        self._checkpoint_counter += 1
+        if self._checkpoint_counter >= self._flow.config.get("checkpoint_every", 1):
+            self._checkpoint_counter = 0
+            self._save_checkpoint(runner)
+
+    def _save_checkpoint(self, runner: StreamRunner) -> None:
+        checkpoint_dir = self._flow.checkpoint_dir
+        if checkpoint_dir is None:
+            return
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        state_snapshot = runner._runtime_context._keyed_states
+        checkpoint_data = {}
+        for key, states in state_snapshot.items():
+            key_data = {}
+            for name, state in states.items():
+                if isinstance(state, ValueState):
+                    key_data[name] = {"type": "value", "value": state.value}
+                elif isinstance(state, type(None)):
+                    continue
+            if key_data:
+                checkpoint_data[str(key)] = key_data
+        path = os.path.join(checkpoint_dir, f"checkpoint_{int(time.monotonic()*1000)}.json")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(checkpoint_data, f, default=str, indent=2)
+        except Exception as e:
+            print(f"[liutang] checkpoint save failed: {e}", file=sys.stderr)
+
+    def _enforce_schema(self, data: List[Any], schema: Any) -> List[Any]:
+        if schema is None:
+            return data
+        enforced = []
+        for record in data:
+            if isinstance(record, dict):
+                row = {}
+                for field in schema.fields:
+                    if field.name in record:
+                        row[field.name] = record[field.name]
+                    else:
+                        row[field.name] = None
+                enforced.append(row)
+            else:
+                enforced.append(record)
+        return enforced
 
     def _find_stream(self, stream_id: str):
         for s in self._flow._streams:

@@ -2,13 +2,15 @@
 liutang (流淌) — A pure-Python streaming data framework.
 
 No external dependencies. All stream processing features (windowing, watermark,
-stateful processing, checkpointing) are implemented natively with threading/
-multiprocessing for parallelism. Switch between batch and streaming mode freely.
+stateful processing, checkpointing, delivery semantics, late data handling) are
+implemented natively with threading/multiprocessing for parallelism. Switch
+between batch and streaming mode freely.
 
 Design principles:
   - Zero dependencies: just Python stdlib
   - Native concurrency: threading / multiprocessing / concurrent.futures
   - Full streaming: watermark, event-time windows, keyed state, timers
+  - Delivery semantics: at-least-once, at-most-once, exactly-once
   - API parity: same Flow/Stream API for batch and streaming
 """
 
@@ -59,6 +61,7 @@ from liutang.core.state import (
     WatermarkStrategy,
     Watermark,
     MemoryStateBackend,
+    JsonFileStateBackend,
     StateConfig,
 )
 from liutang.core.errors import (
@@ -118,6 +121,7 @@ __all__ = [
     "WatermarkStrategy",
     "Watermark",
     "MemoryStateBackend",
+    "JsonFileStateBackend",
     "StateConfig",
     "LiuTangError",
     "PipelineError",

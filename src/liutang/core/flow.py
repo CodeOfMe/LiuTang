@@ -33,6 +33,7 @@ class Flow:
         self._config: Dict[str, Any] = {}
         self._checkpoint_dir: Optional[str] = None
         self._checkpoint_interval: float = 60.0
+        self._schema_enforcement: bool = False
 
     @property
     def name(self) -> str:
@@ -81,6 +82,10 @@ class Flow:
     def set_checkpoint(self, directory: str, interval: float = 60.0) -> "Flow":
         self._checkpoint_dir = directory
         self._checkpoint_interval = interval
+        return self
+
+    def enable_schema_enforcement(self, enabled: bool = True) -> "Flow":
+        self._schema_enforcement = enabled
         return self
 
     def configure(self, key: str, value: Any) -> "Flow":
