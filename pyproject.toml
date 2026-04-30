@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "liutang"
+version = "0.1.0"
+description = "流淌 - A unified streaming data framework with native Python concurrency, optional Flink/Spark backends"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.9"
+authors = [
+    { name = "LiuTang Contributors" },
+]
+keywords = ["streaming", "flink", "spark", "data-flow", "real-time", "concurrency"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Distributed Computing",
+]
+dependencies = []
+
+[project.optional-dependencies]
+flink = ["apache-flink>=1.18.0"]
+spark = ["pyspark>=3.4.0"]
+kafka = ["kafka-python>=2.0.2"]
+all = [
+    "apache-flink>=1.18.0",
+    "pyspark>=3.4.0",
+    "kafka-python>=2.0.2",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/CodeOfMe/LiuTang"
+Repository = "https://github.com/CodeOfMe/LiuTang"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/liutang"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
