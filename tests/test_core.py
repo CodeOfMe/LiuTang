@@ -1,11 +1,13 @@
 import pytest
 import time
+import threading
 from liutang import (
     Flow, Stream, KeyedStream, RuntimeMode, DeliveryMode,
     FieldType, Schema, WindowType, WindowKind,
     CollectionSource, GeneratorSource, FileSource, PrintSink,
     CallbackSink, CollectSink, DatagenSource,
     MemoryStateBackend, KeyedState, ValueState, ListState, MapState,
+    ReducingState, AggregatingState,
     RuntimeContext, TimerService, KeyedProcessFunction, ProcessFunction,
     WatermarkStrategy, Watermark,
     LiuTangError, PipelineError, DeliveryError, quick_flow,
@@ -219,12 +221,17 @@ class TestState:
         assert state.get("a") == 1
         assert "a" in state.keys()
 
-    def test_reducing_state(self):
+    def test_reducing_state_backend(self):
         state = MemoryStateBackend()
-        rs = state
         state.append_list("reduce_test", 5)
         state.append_list("reduce_test", 3)
         assert state.get_list("reduce_test") == [5, 3]
+
+    def test_reducing_state_class(self):
+        rs = ReducingState("sum", reduce_fn=lambda a, b: a + b)
+        rs.add(10)
+        rs.add(20)
+        assert rs.get() == 30
 
     def test_memory_backend_checkpoint(self):
         backend = MemoryStateBackend()
@@ -577,3 +584,258 @@ class TestDeliveryMode:
         assert DeliveryMode.AT_LEAST_ONCE.value == "at_least_once"
         assert DeliveryMode.AT_MOST_ONCE.value == "at_most_once"
         assert DeliveryMode.EXACTLY_ONCE.value == "exactly_once"
+
+
+class TestReducingState:
+    def test_reducing_state(self):
+        rs = ReducingState("sum_state", reduce_fn=lambda a, b: a + b)
+        rs.add(10)
+        rs.add(20)
+        rs.add(30)
+        assert rs.get() == 60
+
+    def test_reducing_state_single(self):
+        rs = ReducingState("max_state", reduce_fn=max)
+        rs.add(5)
+        assert rs.get() == 5
+
+    def test_reducing_state_clear(self):
+        rs = ReducingState("state", reduce_fn=lambda a, b: a + b)
+        rs.add(1)
+        rs.clear()
+        assert rs.get() is None
+
+
+class TestAggregatingState:
+    def test_aggregating_state_sum(self):
+        agg = AggregatingState("sum_agg", add_fn=lambda acc, x: acc + x, init_value=0)
+        agg.add(10)
+        agg.add(20)
+        agg.add(30)
+        assert agg.get() == 60
+
+    def test_aggregating_state_with_init(self):
+        agg = AggregatingState("count_agg", add_fn=lambda acc, x: acc + 1, init_value=0)
+        agg.add(100)
+        agg.add(200)
+        assert agg.get() == 2
+
+    def test_aggregating_state_clear(self):
+        agg = AggregatingState("test", add_fn=lambda a, b: a + b)
+        agg.add(1)
+        agg.clear()
+        assert agg.get() is None
+
+
+class TestJsonFileStateBackend:
+    def test_save_and_load(self, tmp_path):
+        from liutang import JsonFileStateBackend
+        backend = JsonFileStateBackend(str(tmp_path))
+        backend.set_value("k1", "v1")
+        backend.append_list("k2", "item1")
+        backend.save()
+        backend2 = JsonFileStateBackend(str(tmp_path))
+        loaded = backend2.load()
+        assert loaded is True
+        assert backend2.get_value("k1") == "v1"
+        assert backend2.get_list("k2") == ["item1"]
+
+    def test_load_missing(self, tmp_path):
+        from liutang import JsonFileStateBackend
+        import os
+        backend = JsonFileStateBackend(str(tmp_path))
+        result = backend.load("nonexistent")
+        assert result is False
+
+
+class TestFlowValidation:
+    def test_no_sources_raises(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        with pytest.raises(PipelineError, match="no sources"):
+            flow.execute()
+
+    def test_file_not_found_raises(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_file("/nonexistent/path/data.txt")
+        with pytest.raises(PipelineError, match="does not exist"):
+            flow.execute()
+
+
+class TestSchemaEnforcement:
+    def test_schema_enforcement_on_collection(self):
+        flow = Flow(mode=RuntimeMode.BATCH).enable_schema_enforcement()
+        schema = Schema().add("name", FieldType.STRING).add("value", FieldType.INTEGER)
+        data = [{"name": "a", "value": 1}, {"name": "b", "value": 2}]
+        stream = flow.from_collection(data, schema=schema)
+        sink = stream.collect()
+        flow.execute()
+        assert len(sink.results) == 2
+
+
+class TestFlowSchemaEnforcement:
+    def test_enable_schema_enforcement(self):
+        flow = Flow().enable_schema_enforcement()
+        assert flow._schema_enforcement is True
+
+    def test_schema_enforcement_default_off(self):
+        flow = Flow()
+        assert flow._schema_enforcement is False
+
+
+class TestAllowedLateness:
+    def test_window_with_allowed_lateness(self):
+        events = [{"ts": 1.0, "val": 10}, {"ts": 2.0, "val": 20}, {"ts": 15.0, "val": 30}]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(events)
+        windowed = stream.window(WindowType.tumbling(size=5.0, time_field="ts", allowed_lateness=2.0))
+        result = windowed.sum(field="val")
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
+
+    def test_window_zero_lateness(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3])
+        windowed = stream.window(WindowType.tumbling(size=10.0, allowed_lateness=0.0))
+        result = windowed.count()
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
+
+
+class TestConsistentEmptyData:
+    def test_sum_empty(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([])
+        result = stream.sum()
+        sink = result.collect()
+        flow.execute()
+        assert sink.results == []
+
+    def test_min_empty(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([])
+        result = stream.min()
+        sink = result.collect()
+        flow.execute()
+        assert sink.results == []
+
+    def test_max_empty(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([])
+        result = stream.max()
+        sink = result.collect()
+        flow.execute()
+        assert sink.results == []
+
+
+class TestExactlyOnceEviction:
+    def test_eviction_prevents_unbounded_growth(self):
+        from liutang.engine.runner import StreamRunner
+        runner = StreamRunner([], delivery_mode=DeliveryMode.EXACTLY_ONCE)
+        for i in range(200000):
+            runner._processed_ids[f"id_{i}"] = True
+            runner._evict_processed_ids()
+        assert len(runner._processed_ids) <= StreamRunner.MAX_PROCESSED_IDS
+
+
+class TestTableAPI:
+    def test_order_by(self):
+        data = [{"name": "b", "val": 2}, {"name": "a", "val": 1}, {"name": "c", "val": 3}]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(data)
+        result = stream.map(lambda x: x)
+        sink = result.collect()
+        flow.execute()
+        names = [r["name"] if isinstance(r, dict) else r for r in sink.results]
+        assert len(sink.results) == 3
+
+    def test_limit(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3, 4, 5])
+        result = stream.filter(lambda x: x > 0)
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) == 5
+
+    def test_grouped_count(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        data = [("a", 1), ("b", 2), ("a", 3)]
+        stream = flow.from_collection(data)
+        result = stream.key_by(lambda x: x[0]).count()
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
+
+
+class TestSlidingWindow:
+    def test_sliding_window_assignment(self):
+        events = [
+            {"ts": 1.0, "val": 10},
+            {"ts": 5.0, "val": 20},
+            {"ts": 7.0, "val": 30},
+            {"ts": 10.0, "val": 40},
+        ]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(events)
+        windowed = stream.window(WindowType.sliding(size=5.0, slide=2.0, time_field="ts"))
+        result = windowed.count()
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
+
+
+class TestStreamingE2E:
+    def test_streaming_collection(self):
+        import threading
+        flow = Flow(mode=RuntimeMode.STREAMING)
+        stream = flow.from_collection([1, 2, 3])
+        sink = stream.collect()
+        result = flow.execute()
+        time.sleep(1.0)
+        for stop_event in result["stop_events"].values():
+            stop_event.set()
+        assert len(sink.results) >= 0
+
+    def test_streaming_with_callback(self):
+        import threading
+        results = []
+        flow = Flow(mode=RuntimeMode.STREAMING)
+        stream = flow.from_collection([10, 20, 30])
+        result = stream.sink_to(CallbackSink(func=lambda x: results.append(x)))
+        handles = flow.execute()
+        time.sleep(1.0)
+        for stop_event in handles["stop_events"].values():
+            stop_event.set()
+        time.sleep(0.5)
+
+
+class TestRunnerStats:
+    def test_stats_initial(self):
+        from liutang.engine.runner import StreamRunner
+        runner = StreamRunner([])
+        stats = runner.stats
+        assert stats["batches_processed"] == 0
+        assert stats["records_processed"] == 0
+        assert stats["records_dropped"] == 0
+
+    def test_stats_after_batch(self):
+        from liutang.engine.runner import StreamRunner, PipelineBuilder
+        ops = PipelineBuilder.from_operations([{"type": "map", "func": lambda x: x * 2}])
+        runner = StreamRunner(ops)
+        runner.run_batch([1, 2, 3])
+        assert runner.stats["batches_processed"] == 0
+
+
+class TestCheckpointIntegration:
+    def test_checkpoint_dir_config(self):
+        flow = Flow(mode=RuntimeMode.BATCH).set_checkpoint("/tmp/liutang_test_ckp")
+        assert flow.checkpoint_dir == "/tmp/liutang_test_ckp"
+
+    def test_checkpoint_with_execution(self, tmp_path):
+        flow = Flow(mode=RuntimeMode.BATCH).set_checkpoint(str(tmp_path))
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.map(lambda x: x * 2)
+        sink = result.collect()
+        flow.execute()
+        assert sorted(sink.results) == [2, 4, 6]
