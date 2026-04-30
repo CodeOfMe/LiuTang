@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 360" width="920" height="360" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="spectrumGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563EB" stop-opacity="0.9"/>
+      <stop offset="25%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#D97706"/>
+      <stop offset="75%" stop-color="#92400E"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="50%" stop-color="#D97706"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrowEnd" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#475569"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="920" height="360" rx="12" fill="#F8FAFC"/>
+  <rect x="1" y="1" width="918" height="358" rx="12" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="460" y="38" text-anchor="middle" font-size="18" font-weight="700" fill="#1E293B">Viscosity Spectrum: η ∈ [0, 1]</text>
+  <text x="460" y="58" text-anchor="middle" font-size="12" fill="#64748B">From pure streaming to pure batch processing</text>
+
+  <!-- Spectrum bar -->
+  <rect x="60" y="80" width="800" height="18" rx="9" fill="url(#spectrumGrad)" filter="url(#shadow)"/>
+
+  <!-- Tick marks and η values -->
+  <line x1="60" y1="98" x2="60" y2="110" stroke="#2563EB" stroke-width="2"/>
+  <text x="60" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#2563EB">η=0</text>
+
+  <line x1="260" y1="98" x2="260" y2="110" stroke="#38BDF8" stroke-width="2"/>
+  <text x="260" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#0EA5E9">η=0.25</text>
+
+  <line x1="460" y1="98" x2="460" y2="110" stroke="#D97706" stroke-width="2"/>
+  <text x="460" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#D97706">η=0.5</text>
+
+  <line x1="660" y1="98" x2="660" y2="110" stroke="#92400E" stroke-width="2"/>
+  <text x="660" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#92400E">η=0.75</text>
+
+  <line x1="860" y1="98" x2="860" y2="110" stroke="#64748B" stroke-width="2"/>
+  <text x="860" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#64748B">η=1</text>
+
+  <!-- Arrow along spectrum -->
+  <line x1="60" y1="140" x2="860" y2="140" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrowEnd)"/>
+  <text x="460" y="155" text-anchor="middle" font-size="10" fill="#94A3B8">increasing viscosity</text>
+
+  <!-- Level cards -->
+  <!-- VOLATILE -->
+  <rect x="20" y="170" width="160" height="170" rx="10" fill="white" stroke="#BFDBFE" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="20" y="170" width="160" height="6" rx="3" fill="#2563EB"/>
+  <!-- Water droplet icon -->
+  <path d="M88,200 C88,200 74,218 74,228 C74,235.5 80.5,242 88,242 C95.5,242 102,235.5 102,228 C102,218 88,200 88,200Z" fill="#2563EB" opacity="0.8"/>
+  <text x="100" y="260" text-anchor="middle" font-size="14" font-weight="700" fill="#1E40AF">VOLATILE</text>
+  <text x="100" y="276" text-anchor="middle" font-size="11" fill="#3B82F6">如水 (Like Water)</text>
+  <text x="100" y="296" text-anchor="middle" font-size="10" font-weight="600" fill="#2563EB">Pure Streaming</text>
+  <line x1="40" y1="304" x2="160" y2="304" stroke="#E2E8F0" stroke-width="0.5"/>
+  <text x="100" y="320" text-anchor="middle" font-size="9" fill="#64748B">batch_size=1</text>
+  <text x="100" y="333" text-anchor="middle" font-size="9" fill="#64748B">timeout→0</text>
+
+  <!-- FLUID -->
+  <rect x="195" y="170" width="160" height="170" rx="10" fill="white" stroke="#BAE6FD" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="195" y="170" width="160" height="6" rx="3" fill="#0EA5E9"/>
+  <!-- Stream icon -->
+  <path d="M263,204 Q270,212 277,204 Q284,196 291,204" stroke="#0EA5E9" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M263,214 Q270,222 277,214 Q284,206 291,214" stroke="#38BDF8" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M263,224 Q270,232 277,224 Q284,216 291,224" stroke="#7DD3FC" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <text x="275" y="260" text-anchor="middle" font-size="14" font-weight="700" fill="#0369A1">FLUID</text>
+  <text x="275" y="276" text-anchor="middle" font-size="11" fill="#0EA5E9">如溪 (Like Stream)</text>
+  <text x="275" y="296" text-anchor="middle" font-size="10" font-weight="600" fill="#0EA5E9">Low-latency</text>
+  <line x1="215" y1="304" x2="335" y2="304" stroke="#E2E8F0" stroke-width="0.5"/>
+  <text x="275" y="320" text-anchor="middle" font-size="9" fill="#64748B">batch_size≤10</text>
+  <text x="275" y="333" text-anchor="middle" font-size="9" fill="#64748B">timeout≤50ms</text>
+
+  <!-- HONEYED -->
+  <rect x="370" y="170" width="160" height="170" rx="10" fill="white" stroke="#FDE68A" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="370" y="170" width="160" height="6" rx="3" fill="#D97706"/>
+  <!-- Honey icon -->
+  <ellipse cx="450" cy="210" rx="14" ry="10" fill="#F59E0B" opacity="0.4"/>
+  <path d="M446,204 L446,222 Q446,228 450,228 Q454,228 454,222 L454,204" fill="#D97706" opacity="0.7" stroke="#B45309" stroke-width="0.5"/>
+  <ellipse cx="450" cy="204" rx="4" ry="2" fill="#FBBF24"/>
+  <text x="450" y="260" text-anchor="middle" font-size="14" font-weight="700" fill="#92400E">HONEYED</text>
+  <text x="450" y="276" text-anchor="middle" font-size="11" fill="#D97706">如蜜 (Like Honey)</text>
+  <text x="450" y="296" text-anchor="middle" font-size="10" font-weight="600" fill="#D97706">Balanced</text>
+  <line x1="390" y1="304" x2="510" y2="304" stroke="#E2E8F0" stroke-width="0.5"/>
+  <text x="450" y="320" text-anchor="middle" font-size="9" fill="#64748B">batch_size≤100</text>
+  <text x="450" y="333" text-anchor="middle" font-size="9" fill="#64748B">timeout≤500ms</text>
+
+  <!-- SLUGGISH -->
+  <rect x="545" y="170" width="160" height="170" rx="10" fill="white" stroke="#D6D3D1" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="545" y="170" width="160" height="6" rx="3" fill="#78350F"/>
+  <!-- Mud icon -->
+  <ellipse cx="625" cy="212" rx="16" ry="10" fill="#92400E" opacity="0.3"/>
+  <ellipse cx="625" cy="210" rx="12" ry="8" fill="#78350F" opacity="0.5"/>
+  <ellipse cx="625" cy="208" rx="8" ry="5" fill="#A16207" opacity="0.6"/>
+  <path d="M618,218 Q621,222 625,218 Q629,222 632,218" stroke="#78350F" stroke-width="1.5" fill="none"/>
+  <text x="625" y="260" text-anchor="middle" font-size="14" font-weight="700" fill="#78350F">SLUGGISH</text>
+  <text x="625" y="276" text-anchor="middle" font-size="11" fill="#92400E">如泥 (Like Mud)</text>
+  <text x="625" y="296" text-anchor="middle" font-size="10" font-weight="600" fill="#92400E">High-throughput</text>
+  <line x1="565" y1="304" x2="685" y2="304" stroke="#E2E8F0" stroke-width="0.5"/>
+  <text x="625" y="320" text-anchor="middle" font-size="9" fill="#64748B">batch_size≤1000</text>
+  <text x="625" y="333" text-anchor="middle" font-size="9" fill="#64748B">timeout≤5s</text>
+
+  <!-- FROZEN -->
+  <rect x="720" y="170" width="160" height="170" rx="10" fill="white" stroke="#CBD5E1" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="720" y="170" width="160" height="6" rx="3" fill="#64748B"/>
+  <!-- Ice icon -->
+  <g transform="translate(800, 212)">
+    <line x1="0" y1="-14" x2="0" y2="14" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="-12" y1="0" x2="12" y2="0" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="-8" y1="-8" x2="8" y2="8" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="8" y1="-8" x2="-8" y2="8" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="0" cy="0" r="3" fill="#CBD5E1"/>
+  </g>
+  <text x="800" y="260" text-anchor="middle" font-size="14" font-weight="700" fill="#334155">FROZEN</text>
+  <text x="800" y="276" text-anchor="middle" font-size="11" fill="#64748B">如冰 (Like Ice)</text>
+  <text x="800" y="296" text-anchor="middle" font-size="10" font-weight="600" fill="#64748B">Pure Batch</text>
+  <line x1="740" y1="304" x2="860" y2="304" stroke="#E2E8F0" stroke-width="0.5"/>
+  <text x="800" y="320" text-anchor="middle" font-size="9" fill="#64748B">batch_size=∞</text>
+  <text x="800" y="333" text-anchor="middle" font-size="9" fill="#64748B">timeout→∞</text>
+</svg>
