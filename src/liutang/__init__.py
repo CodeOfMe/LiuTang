@@ -70,6 +70,12 @@ from liutang.core.state import (
 from liutang.core.eventlog import EventLog
 from liutang.core.serving import ServingView, MergeView
 from liutang.core.lambda_flow import LambdaFlow, KappaFlow
+from liutang.core.viscosity import (
+    Viscosity,
+    ViscosityPolicy,
+    ViscosityController,
+    FlowMetrics,
+)
 from liutang.core.granularity import (
     GranularityLevel,
     GranularityPolicy,
@@ -142,6 +148,10 @@ __all__ = [
     "MergeView",
     "LambdaFlow",
     "KappaFlow",
+    "Viscosity",
+    "ViscosityPolicy",
+    "ViscosityController",
+    "FlowMetrics",
     "GranularityLevel",
     "GranularityPolicy",
     "GranularityController",
