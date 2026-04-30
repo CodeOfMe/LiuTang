@@ -2,9 +2,10 @@
 liutang (流淌) — A pure-Python streaming data framework.
 
 No external dependencies. All stream processing features (windowing, watermark,
-stateful processing, checkpointing, delivery semantics, late data handling) are
-implemented natively with threading/multiprocessing for parallelism. Switch
-between batch and streaming mode freely.
+stateful processing, checkpointing, delivery semantics, late data handling,
+adaptive granularity architecture) are implemented natively with
+threading/multiprocessing for parallelism. Switch between batch and streaming
+mode freely, or let adaptive granularity choose for you.
 
 Design principles:
   - Zero dependencies: just Python stdlib
@@ -12,6 +13,7 @@ Design principles:
   - Full streaming: watermark, event-time windows, keyed state, timers
   - Delivery semantics: at-least-once, at-most-once, exactly-once
   - API parity: same Flow/Stream API for batch and streaming
+  - Adaptive granularity: auto-adjust from micro-streaming to macro-batch
 """
 
 __version__ = "0.1.1"
@@ -26,6 +28,7 @@ from liutang.core.stream import (
     WindowedTable,
     RuntimeMode,
     DeliveryMode,
+    ArchitectureMode,
 )
 from liutang.core.schema import FieldType, Schema, Field
 from liutang.core.window import WindowType, WindowKind
@@ -64,6 +67,16 @@ from liutang.core.state import (
     JsonFileStateBackend,
     StateConfig,
 )
+from liutang.core.eventlog import EventLog
+from liutang.core.serving import ServingView, MergeView
+from liutang.core.lambda_flow import LambdaFlow, KappaFlow
+from liutang.core.granularity import (
+    GranularityLevel,
+    GranularityPolicy,
+    GranularityController,
+    GranularityMetrics,
+)
+from liutang.core.adaptive_flow import AdaptiveFlow
 from liutang.core.errors import (
     LiuTangError,
     PipelineError,
@@ -89,6 +102,7 @@ __all__ = [
     "WindowedTable",
     "RuntimeMode",
     "DeliveryMode",
+    "ArchitectureMode",
     "FieldType",
     "Schema",
     "Field",
@@ -123,6 +137,16 @@ __all__ = [
     "MemoryStateBackend",
     "JsonFileStateBackend",
     "StateConfig",
+    "EventLog",
+    "ServingView",
+    "MergeView",
+    "LambdaFlow",
+    "KappaFlow",
+    "GranularityLevel",
+    "GranularityPolicy",
+    "GranularityController",
+    "GranularityMetrics",
+    "AdaptiveFlow",
     "LiuTangError",
     "PipelineError",
     "SchemaError",

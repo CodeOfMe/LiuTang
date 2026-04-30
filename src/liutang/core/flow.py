@@ -5,7 +5,7 @@ import queue
 import time
 from typing import Any, Dict, List, Optional
 
-from liutang.core.stream import Stream, TableStream, RuntimeMode, DeliveryMode
+from liutang.core.stream import Stream, TableStream, RuntimeMode, DeliveryMode, ArchitectureMode
 from liutang.core.schema import Schema
 from liutang.core.connector import SourceConnector, SinkConnector, PrintSink, CollectSink
 from liutang.core.errors import PipelineError
@@ -20,6 +20,7 @@ class Flow:
         parallelism: int = 1,
         delivery_mode: DeliveryMode = DeliveryMode.AT_LEAST_ONCE,
         max_retries: int = 3,
+        architecture: ArchitectureMode = ArchitectureMode.SIMPLE,
     ):
         self._name = name
         self._engine_name = engine
@@ -27,6 +28,7 @@ class Flow:
         self._parallelism = parallelism
         self._delivery_mode = delivery_mode
         self._max_retries = max_retries
+        self._architecture = architecture
         self._sources: List[Dict[str, Any]] = []
         self._sinks: List[Dict[str, Any]] = []
         self._streams: List[Stream] = []
@@ -58,6 +60,10 @@ class Flow:
     @property
     def max_retries(self) -> int:
         return self._max_retries
+
+    @property
+    def architecture(self) -> ArchitectureMode:
+        return self._architecture
 
     @property
     def sources(self) -> List[Dict[str, Any]]:
@@ -146,3 +152,114 @@ class Flow:
         from liutang.engine.executor import Executor
         executor = Executor(self)
         return executor.explain()
+
+    def as_lambda(self) -> "LambdaFlow":
+        from liutang.core.lambda_flow import LambdaFlow
+        batch_fn = None
+        speed_fn = None
+        for src in self._sources:
+            connector = src["connector"]
+            from liutang.core.connector import CollectionSource
+            if isinstance(connector, CollectionSource):
+                data = connector.data
+                def _make_batch(d=data):
+                    def fn(f):
+                        s = f.from_collection(d)
+                        for op_info in self._streams[0].operations() if self._streams else []:
+                            s = _apply_op_to_stream(s, op_info)
+                        return s
+                    return fn
+                batch_fn = _make_batch()
+                speed_fn = _make_batch()
+        return LambdaFlow(
+            name=f"{self._name}-lambda",
+            batch_layer_fn=batch_fn,
+            speed_layer_fn=speed_fn,
+            parallelism=self._parallelism,
+            delivery_mode=self._delivery_mode,
+        )
+
+    def as_kappa(self, event_log_path: Optional[str] = None) -> "KappaFlow":
+        from liutang.core.lambda_flow import KappaFlow
+        stream_fn = None
+        for src in self._sources:
+            data = src["connector"].data if hasattr(src["connector"], 'data') else []
+            def _make_stream(d=data):
+                def fn(f):
+                    s = f.from_collection(d)
+                    for op_info in self._streams[0].operations() if self._streams else []:
+                        s = _apply_op_to_stream(s, op_info)
+                    return s
+                return fn
+            stream_fn = _make_stream()
+        return KappaFlow(
+            name=f"{self._name}-kappa",
+            stream_fn=stream_fn,
+            event_log_path=event_log_path,
+            parallelism=self._parallelism,
+            delivery_mode=self._delivery_mode,
+        )
+
+    def as_adaptive(
+        self,
+        policy: Optional[Any] = None,
+        initial_granularity: Optional[Any] = None,
+        min_granularity: Optional[Any] = None,
+        max_granularity: Optional[Any] = None,
+    ) -> "AdaptiveFlow":
+        from liutang.core.adaptive_flow import AdaptiveFlow
+        from liutang.core.granularity import GranularityPolicy, GranularityLevel
+        stream_fn = None
+        for src in self._sources:
+            data = src["connector"].data if hasattr(src["connector"], 'data') else []
+            def _make_stream(d=data):
+                def fn(f):
+                    s = f.from_collection(d)
+                    for op_info in self._streams[0].operations() if self._streams else []:
+                        s = _apply_op_to_stream(s, op_info)
+                    return s
+                return fn
+            stream_fn = _make_stream()
+        kwargs: Dict[str, Any] = {
+            "name": f"{self._name}-adaptive",
+            "stream_fn": stream_fn,
+            "parallelism": self._parallelism,
+            "delivery_mode": self._delivery_mode,
+        }
+        if policy is not None:
+            kwargs["policy"] = policy
+        if initial_granularity is not None:
+            kwargs["initial_granularity"] = initial_granularity
+        if min_granularity is not None:
+            kwargs["min_granularity"] = min_granularity
+        if max_granularity is not None:
+            kwargs["max_granularity"] = max_granularity
+        return AdaptiveFlow(**kwargs)
+
+
+def _apply_op_to_stream(stream: Stream, op_info: Dict[str, Any]) -> Stream:
+    op_type = op_info["type"]
+    func = op_info.get("func")
+    if op_type == "map":
+        return stream.map(func)
+    elif op_type == "filter":
+        return stream.filter(func)
+    elif op_type == "flat_map":
+        return stream.flat_map(func)
+    elif op_type == "key_by":
+        return stream.key_by(func)
+    elif op_type == "reduce":
+        return stream.reduce(func)
+    elif op_type == "sum":
+        return stream.sum(field=op_info.get("field", 0))
+    elif op_type == "count":
+        return stream.count()
+    elif op_type == "min":
+        return stream.min(field=op_info.get("field", 0))
+    elif op_type == "max":
+        return stream.max(field=op_info.get("field", 0))
+    elif op_type == "process":
+        return stream.process(func)
+    elif op_type == "assign_timestamps":
+        return stream.assign_timestamps(func)
+    return stream

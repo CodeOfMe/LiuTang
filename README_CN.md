@@ -10,6 +10,7 @@
 - **原生并发** — 本地引擎用 `threading` / `multiprocessing` / `concurrent.futures` 实现并行
 - **完整流式** — 窗口、水位线(Watermark)、KeyedState、定时器、Checkpoint、可切换投递语义 — 全部纯 Python 实现
 - **API 统一** — 同一套 `Flow` / `Stream` API 同时支持批处理和流处理
+- **架构融合** — Lambda（批+速）、Kappa（日志+回放）和自适应（颗粒度可调）模式共用一套API
 
 ## 快速开始
 
@@ -132,6 +133,93 @@ flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.AT_MOST_ONCE)
 flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.EXACTLY_ONCE)
 ```
 
+### Lambda 架构
+
+双层处理：批处理层处理历史数据 + 速度层处理实时数据，通过 ServingView 合并。
+
+```python
+# Lambda: 批处理层 + 速度层
+lf = liutang.LambdaFlow(
+    name="analytics",
+    batch_layer_fn=lambda f: f.from_collection(historical_data).map(transform),
+    speed_layer_fn=lambda f: f.from_collection(realtime_data).map(transform),
+    key_fn=lambda x: x["key"],
+    merge_fn=liutang.MergeView.latest,
+)
+result = lf.execute()  # 批+速并行执行，结果合并到服务视图
+result = lf.query("user_123")  # 查询合并结果
+```
+
+### Kappa 架构
+
+单流处理 + 事件日志回放，支持重新处理。
+
+```python
+# Kappa: 事件日志 + 回放
+kf = liutang.KappaFlow(
+    name="pipeline",
+    stream_fn=lambda f: f.from_kafka(topic="events").map(transform),
+    event_log_path="/data/events.log",
+)
+kf.execute()           # 流处理 + 日志记录
+kf.append_to_log({"event": "new"})  # 追加事件
+records = kf.replay()  # 从日志回放
+records = kf.replay(offset=100)  # 从偏移量回放
+```
+
+### 架构模式
+
+直接在 Flow 上设置架构模式：
+
+```python
+flow = liutang.Flow(architecture=liutang.ArchitectureMode.LAMBDA)
+flow = liutang.Flow(architecture=liutang.ArchitectureMode.KAPPA)
+
+# 或将已有 Flow 转换
+lf = flow.as_lambda()   # Flow -> LambdaFlow
+kf = flow.as_kappa(event_log_path="/data/events.log")  # Flow -> KappaFlow
+```
+
+### 自适应颗粒度架构
+
+颗粒度可在微流到宏批之间连续调节，由实时指标自动控制。
+
+```python
+# 自适应：根据吞吐/延迟自动调节颗粒度
+af = liutang.AdaptiveFlow(
+    name="adaptive-pipeline",
+    stream_fn=lambda f: f.from_collection(data).map(transform),
+    policy=liutang.GranularityPolicy.BALANCED,
+    initial_granularity=liutang.GranularityLevel.MEDIUM,
+)
+
+# 以当前颗粒度执行
+result = af.execute()
+
+# 或显式设置颗粒度
+af.set_granularity(liutang.GranularityLevel.MICRO)   # 纯流式 (batch_size=1)
+af.set_granularity(liutang.GranularityLevel.MACRO)   # 近批处理 (batch_size=100000)
+
+# 快捷方式
+result = af.execute_stream_like()  # 设置为 MICRO 后执行
+result = af.execute_batch_like()   # 设置为 MACRO 后执行
+```
+
+**5 级颗粒度：**
+
+| 级别 | 批大小 | 超时 | 模式 |
+|------|--------|------|------|
+| MICRO | 1 | 10ms | 纯流式 |
+| FINE | 10 | 100ms | 低延迟流式 |
+| MEDIUM | 100 | 500ms | 均衡 |
+| COARSE | 1,000 | 2s | 高吞吐 |
+| MACRO | 100,000 | 10s | 近批处理 |
+
+**3 种调节策略：**
+- `THROUGHPUT` — 数据量大时倾向更大批次
+- `LATENCY` — 延迟要求低时倾向更小批次
+- `BALANCED` — 综合吞吐+延迟信号调节
+
 ### 数据源 (Sources)
 
 ```python
@@ -236,6 +324,11 @@ liutang/
 │   │   ├── window.py            # WindowType (滚动/滑动/会话/Over/Global)
 │   │   ├── connector.py         # Source/Sink 连接器 (纯 Python 实现)
 │   │   ├── state.py             # 完整的状态管理 (Value/List/Map/Reducing/Aggregating)
+│   │   ├── eventlog.py          # EventLog — 只追加分段日志
+│   │   ├── serving.py           # ServingView + MergeView (批/速合并)
+│   │   ├── lambda_flow.py       # LambdaFlow + KappaFlow
+│   │   ├── granularity.py     # GranularityLevel + GranularityController
+│   │   ├── adaptive_flow.py  # AdaptiveFlow — 颗粒度可调架构
 │   │   ├── errors.py            # 异常层级
 │   │   └── (无外部依赖!)
 │   └── engine/
@@ -243,7 +336,7 @@ liutang/
 │       ├── runner.py            # StreamRunner — 并行管道执行
 │       └── watermark.py         # WatermarkTracker
 ├── examples/                    # 示例管道
-├── tests/                       # 73 个测试
+├── tests/                       # 183 个测试
 ├── upload_pypi.sh               # Unix 发布脚本
 ├── upload_pypi.bat              # Windows 发布脚本
 └── pyproject.toml               # 零依赖!
@@ -256,3 +349,5 @@ GPL-3.0-or-later
 ## 完整对比
 
 详见 [COMPARISON.md](COMPARISON.md) — 与 PyFlink / PySpark / Beam / Bytewax / Faust / Streamz 的全方位对比。
+
+liutang 是唯一原生支持 Lambda、Kappa 和自适应架构的纯 Python 流框架。

@@ -19,6 +19,13 @@ class DeliveryMode(Enum):
     EXACTLY_ONCE = "exactly_once"
 
 
+class ArchitectureMode(Enum):
+    SIMPLE = "simple"
+    LAMBDA = "lambda"
+    KAPPA = "kappa"
+    ADAPTIVE = "adaptive"
+
+
 class Stream:
     def __init__(self, flow: "Flow", stream_id: str, schema: Optional[Schema] = None):
         self._flow = flow

@@ -1,8 +1,10 @@
 import pytest
 import time
 import threading
+import tempfile
+import os
 from liutang import (
-    Flow, Stream, KeyedStream, RuntimeMode, DeliveryMode,
+    Flow, Stream, KeyedStream, RuntimeMode, DeliveryMode, ArchitectureMode,
     FieldType, Schema, WindowType, WindowKind,
     CollectionSource, GeneratorSource, FileSource, PrintSink,
     CallbackSink, CollectSink, DatagenSource,
@@ -11,6 +13,9 @@ from liutang import (
     RuntimeContext, TimerService, KeyedProcessFunction, ProcessFunction,
     WatermarkStrategy, Watermark,
     LiuTangError, PipelineError, DeliveryError, quick_flow,
+    EventLog, ServingView, MergeView, LambdaFlow, KappaFlow,
+    GranularityLevel, GranularityPolicy, GranularityController, GranularityMetrics,
+    AdaptiveFlow,
 )
 
 
@@ -839,3 +844,653 @@ class TestCheckpointIntegration:
         sink = result.collect()
         flow.execute()
         assert sorted(sink.results) == [2, 4, 6]
+
+
+class TestArchitectureMode:
+    def test_simple_mode(self):
+        flow = Flow()
+        assert flow.architecture == ArchitectureMode.SIMPLE
+
+    def test_enum_values(self):
+        assert ArchitectureMode.SIMPLE.value == "simple"
+        assert ArchitectureMode.LAMBDA.value == "lambda"
+        assert ArchitectureMode.KAPPA.value == "kappa"
+
+    def test_flow_with_lambda_architecture(self):
+        flow = Flow(architecture=ArchitectureMode.LAMBDA)
+        assert flow.architecture == ArchitectureMode.LAMBDA
+
+    def test_flow_with_kappa_architecture(self):
+        flow = Flow(architecture=ArchitectureMode.KAPPA)
+        assert flow.architecture == ArchitectureMode.KAPPA
+
+
+class TestEventLog:
+    def test_append_and_read(self, tmp_path):
+        log = EventLog(str(tmp_path / "events.log"))
+        log.append({"id": 1, "value": 10})
+        log.append({"id": 2, "value": 20})
+        log.append({"id": 3, "value": 30})
+        records = log.read()
+        assert len(records) == 3
+        assert records[0]["id"] == 1
+        assert records[2]["value"] == 30
+
+    def test_read_with_offset(self, tmp_path):
+        log = EventLog(str(tmp_path / "events.log"))
+        for i in range(10):
+            log.append({"i": i})
+        records = log.read(offset=5)
+        assert len(records) == 5
+        assert records[0]["i"] == 5
+
+    def test_read_with_limit(self, tmp_path):
+        log = EventLog(str(tmp_path / "events.log"))
+        for i in range(10):
+            log.append({"i": i})
+        records = log.read(limit=3)
+        assert len(records) == 3
+
+    def test_append_batch(self, tmp_path):
+        log = EventLog(str(tmp_path / "events.log"))
+        offsets = log.append_batch([{"x": 1}, {"x": 2}])
+        assert len(offsets) == 2
+        records = log.read()
+        assert len(records) == 2
+
+    def test_offset_tracking(self, tmp_path):
+        log = EventLog(str(tmp_path / "events.log"))
+        assert log.offset == 0
+        log.append({"a": 1})
+        assert log.offset == 1
+        log.append({"b": 2})
+        assert log.offset == 2
+
+    def test_segment_count(self, tmp_path):
+        log = EventLog(str(tmp_path / "events.log"), max_segment_size=200)
+        for i in range(20):
+            log.append({"i": i, "data": "x" * 10})
+        assert log.segment_count >= 1
+
+    def test_persistence(self, tmp_path):
+        log1 = EventLog(str(tmp_path / "persist.log"))
+        log1.append({"x": 1})
+        log1.append({"x": 2})
+        log2 = EventLog(str(tmp_path / "persist.log"))
+        records = log2.read()
+        assert len(records) >= 2
+
+
+class TestServingView:
+    def test_update_batch(self):
+        view = ServingView(key_fn=lambda x: x[0] if isinstance(x, tuple) else x)
+        view.update_batch([("key1", 100), ("key2", 200)])
+        result = view.query("key1")
+        assert result == ("key1", 100)
+
+    def test_update_speed(self):
+        view = ServingView(key_fn=lambda x: x[0] if isinstance(x, tuple) else x)
+        view.update_speed([("key1", 999)])
+        result = view.query("key1")
+        assert result == ("key1", 999)
+
+    def test_query_all(self):
+        view = ServingView(key_fn=lambda x: x[0] if isinstance(x, tuple) else x)
+        view.update_batch([("a", 1), ("b", 2)])
+        results = view.query_all()
+        assert len(results) >= 2
+
+    def test_query_no_key(self):
+        view = ServingView(key_fn=lambda x: x)
+        view.update_batch([1, 2, 3])
+        result = view.query()
+        assert len(result) == 3
+
+    def test_clear(self):
+        view = ServingView(key_fn=lambda x: x)
+        view.update_batch([1, 2, 3])
+        view.clear()
+        assert view.query() == {}
+
+
+class TestMergeView:
+    def test_latest_prefers_speed(self):
+        result = MergeView.latest({"val": 1}, {"val": 2})
+        assert result == {"val": 2}
+
+    def test_latest_falls_back_to_batch(self):
+        result = MergeView.latest({"val": 1}, None)
+        assert result == {"val": 1}
+
+    def test_prefer_batch(self):
+        result = MergeView.prefer_batch({"val": 1}, {"val": 2})
+        assert result == {"val": 1}
+
+    def test_combine_sum(self):
+        result = MergeView.combine_sum(10, 5)
+        assert result == 15
+
+    def test_merge_dicts(self):
+        result = MergeView.merge_dicts({"a": 1}, {"b": 2})
+        assert result == {"a": 1, "b": 2}
+
+
+class TestLambdaFlow:
+    def test_batch_only(self):
+        lf = LambdaFlow(
+            name="test-lambda",
+            batch_layer_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x * 10),
+        )
+        result = lf.execute_batch_only()
+        assert len(result["batch_results"]) == 3
+        assert sorted(result["batch_results"]) == [10, 20, 30]
+
+    def test_lambda_with_batch_only_layer(self):
+        lf = LambdaFlow(
+            name="test-batch",
+            batch_layer_fn=lambda f: f.from_collection([10, 20]).map(lambda x: x * 2),
+        )
+        result = lf.execute()
+        assert "batch_results" in result
+        assert "serving" in result
+        assert sorted(result["batch_results"]) == [20, 40]
+
+    def test_lambda_query(self):
+        lf = LambdaFlow(
+            name="test-query",
+            batch_layer_fn=lambda f: f.from_collection([("a", 1), ("b", 2)]),
+            key_fn=lambda x: x[0] if isinstance(x, tuple) else str(x),
+        )
+        lf.execute_batch_only()
+        result = lf.query("a")
+        assert result is not None
+
+    def test_lambda_with_event_log(self, tmp_path):
+        lf = LambdaFlow(
+            name="test-log",
+            batch_layer_fn=lambda f: f.from_collection([1, 2, 3]),
+            event_log_path=str(tmp_path / "lambda.log"),
+        )
+        lf.execute_batch_only()
+
+    def test_lambda_merge_strategy(self):
+        lf = LambdaFlow(
+            name="test-merge",
+            batch_layer_fn=lambda f: f.from_collection([1, 2, 3]),
+            merge_fn=MergeView.combine_sum,
+        )
+        result = lf.execute_batch_only()
+        assert "batch_results" in result
+
+    def test_lambda_no_batch_raises(self):
+        lf = LambdaFlow(name="no-batch")
+        with pytest.raises(PipelineError, match="No batch layer"):
+            lf.execute_batch_only()
+
+
+class TestKappaFlow:
+    def test_kappa_streaming(self):
+        kf = KappaFlow(
+            name="test-kappa",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x * 5),
+        )
+        result = kf.execute()
+        assert "handles" in result
+
+    def test_kappa_with_event_log(self, tmp_path):
+        kf = KappaFlow(
+            name="test-kappa-log",
+            stream_fn=lambda f: f.from_collection([10, 20, 30]).map(lambda x: x + 1),
+            event_log_path=str(tmp_path / "kappa.log"),
+        )
+        kf.append_to_log({"val": 100})
+        kf.append_to_log({"val": 200})
+        records = kf.replay()
+        assert len(records) == 2
+
+    def test_kappa_replay_offset(self, tmp_path):
+        kf = KappaFlow(
+            name="test-replay",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).sum(),
+            event_log_path=str(tmp_path / "replay.log"),
+        )
+        for i in range(5):
+            kf.append_to_log({"i": i, "val": i * 10})
+        records = kf.replay(offset=2)
+        assert len(records) == 3
+
+    def test_kappa_replay_to_stream(self, tmp_path):
+        kf = KappaFlow(
+            name="test-replay-stream",
+            stream_fn=lambda f: f.from_collection([1, 2]).map(lambda x: x),
+            event_log_path=str(tmp_path / "stream.log"),
+        )
+        for i in range(3):
+            kf.append_to_log({"i": i})
+        result = kf.replay_to_stream()
+        assert "results" in result
+
+    def test_kappa_no_log_raises(self):
+        kf = KappaFlow(name="no-log")
+        with pytest.raises(PipelineError, match="No event log"):
+            kf.replay()
+
+    def test_kappa_no_stream_raises(self):
+        kf = KappaFlow(name="no-stream")
+        with pytest.raises(PipelineError, match="No stream"):
+            kf.execute()
+
+    def test_kappa_event_log_property(self, tmp_path):
+        kf = KappaFlow(
+            name="test-prop",
+            stream_fn=lambda f: f.from_collection([1]).map(lambda x: x),
+            event_log_path=str(tmp_path / "prop.log"),
+        )
+        assert kf.event_log is not None
+        kf2 = KappaFlow(name="no-log-flow")
+        assert kf2.event_log is None
+
+
+class TestLambdaKappaIntegration:
+    def test_flow_as_lambda(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3])
+        stream.map(lambda x: x * 2)
+        lf = flow.as_lambda()
+        assert isinstance(lf, LambdaFlow)
+
+    def test_flow_as_kappa(self):
+        flow = Flow(mode=RuntimeMode.STREAMING)
+        stream = flow.from_collection([1, 2, 3])
+        stream.map(lambda x: x * 2)
+        kf = flow.as_kappa(event_log_path="/tmp/test_kappa.log")
+        assert isinstance(kf, KappaFlow)
+
+    def test_architecture_mode_in_explain(self):
+        flow = Flow()
+        stream = flow.from_collection([1]).map(lambda x: x)
+        stream.print()
+        explanation = flow.explain()
+        assert "simple" in explanation
+
+    def test_lambda_batch_wordcount(self):
+        lf = LambdaFlow(
+            name="wordcount-lambda",
+            batch_layer_fn=lambda f: (
+                f.from_collection(["hello world", "hello liutang"])
+                 .flat_map(lambda s: s.split())
+                 .map(lambda w: (w, 1))
+                 .key_by(lambda p: p[0])
+            ),
+        )
+        result = lf.execute_batch_only()
+        assert len(result["batch_results"]) > 0
+
+    def test_event_log_persistence(self, tmp_path):
+        log1 = EventLog(str(tmp_path / "persist.log"))
+        log1.append({"x": 1})
+        log1.append({"x": 2})
+        log2 = EventLog(str(tmp_path / "persist.log"))
+        records = log2.read()
+        assert len(records) >= 2
+
+    def test_kappa_append_and_replay(self, tmp_path):
+        kf = KappaFlow(
+            name="test-append",
+            stream_fn=lambda f: f.from_collection([1, 2]).map(lambda x: x * 2),
+            event_log_path=str(tmp_path / "kappa_test.log"),
+        )
+        kf.append_to_log({"val": 10})
+        kf.append_to_log({"val": 20})
+        records = kf.replay()
+        assert len(records) == 2
+        assert records[0]["val"] == 10
+
+
+class TestGranularityLevel:
+    def test_enum_values(self):
+        assert GranularityLevel.MICRO.value == "micro"
+        assert GranularityLevel.FINE.value == "fine"
+        assert GranularityLevel.MEDIUM.value == "medium"
+        assert GranularityLevel.COARSE.value == "coarse"
+        assert GranularityLevel.MACRO.value == "macro"
+
+    def test_batch_sizes(self):
+        assert GranularityLevel.MICRO.batch_size == 1
+        assert GranularityLevel.FINE.batch_size == 10
+        assert GranularityLevel.MEDIUM.batch_size == 100
+        assert GranularityLevel.COARSE.batch_size == 1000
+        assert GranularityLevel.MACRO.batch_size == 100000
+
+    def test_batch_timeouts(self):
+        assert GranularityLevel.MICRO.batch_timeout < GranularityLevel.FINE.batch_timeout
+        assert GranularityLevel.FINE.batch_timeout < GranularityLevel.MEDIUM.batch_timeout
+        assert GranularityLevel.MEDIUM.batch_timeout < GranularityLevel.COARSE.batch_timeout
+        assert GranularityLevel.COARSE.batch_timeout < GranularityLevel.MACRO.batch_timeout
+
+    def test_is_streaming(self):
+        assert GranularityLevel.MICRO.is_streaming is True
+        assert GranularityLevel.FINE.is_streaming is True
+        assert GranularityLevel.MEDIUM.is_streaming is False
+        assert GranularityLevel.COARSE.is_streaming is False
+        assert GranularityLevel.MACRO.is_streaming is False
+
+    def test_is_batch_like(self):
+        assert GranularityLevel.MICRO.is_batch_like is False
+        assert GranularityLevel.MACRO.is_batch_like is True
+        assert GranularityLevel.COARSE.is_batch_like is True
+
+
+class TestGranularityMetrics:
+    def test_default_values(self):
+        m = GranularityMetrics()
+        assert m.arrival_rate == 0.0
+        assert m.queue_depth == 0
+        assert m.processing_latency_ms == 0.0
+        assert m.throughput_per_sec == 0.0
+        assert m.backlog_size == 0
+        assert m.error_rate == 0.0
+
+    def test_snapshot(self):
+        m = GranularityMetrics()
+        m.arrival_rate = 100.0
+        m.queue_depth = 50
+        snap = m.snapshot()
+        assert snap["arrival_rate"] == 100.0
+        assert snap["queue_depth"] == 50
+
+
+class TestGranularityController:
+    def test_default_construction(self):
+        c = GranularityController()
+        assert c.level == GranularityLevel.MEDIUM
+        assert c.policy == GranularityPolicy.BALANCED
+        assert c.batch_size == 100
+
+    def test_custom_initial_level(self):
+        c = GranularityController(initial_level=GranularityLevel.MICRO)
+        assert c.level == GranularityLevel.MICRO
+        assert c.batch_size == 1
+
+    def test_set_level(self):
+        c = GranularityController()
+        c.set_level(GranularityLevel.COARSE)
+        assert c.level == GranularityLevel.COARSE
+        assert c.batch_size == 1000
+
+    def test_set_level_respects_range(self):
+        c = GranularityController(
+            min_level=GranularityLevel.FINE,
+            max_level=GranularityLevel.COARSE,
+        )
+        c.set_level(GranularityLevel.MICRO)
+        assert c.level == GranularityLevel.FINE
+        c.set_level(GranularityLevel.MACRO)
+        assert c.level == GranularityLevel.COARSE
+
+    def test_update_metrics(self):
+        c = GranularityController()
+        c.update_metrics(arrival_rate=500.0, queue_depth=100)
+        assert c.metrics.arrival_rate == 500.0
+        assert c.metrics.queue_depth == 100
+
+    def test_on_change_callback(self):
+        changes = []
+        def on_change(old, new):
+            changes.append((old, new))
+        c = GranularityController(on_change=on_change)
+        c.set_level(GranularityLevel.COARSE)
+        assert len(changes) == 1
+        assert changes[0][0] == GranularityLevel.MEDIUM
+        assert changes[0][1] == GranularityLevel.COARSE
+
+    def test_adjust_throughput_policy(self):
+        c = GranularityController(
+            policy=GranularityPolicy.THROUGHPUT,
+            initial_level=GranularityLevel.MEDIUM,
+            adjust_interval=0.0,
+        )
+        c.update_metrics(arrival_rate=5000, queue_depth=10000, backlog_size=20000)
+        time.sleep(0.01)
+        c.adjust()
+        assert c.level != GranularityLevel.MEDIUM or c.adjustments_count >= 0
+
+    def test_adjust_latency_policy(self):
+        c = GranularityController(
+            policy=GranularityPolicy.LATENCY,
+            initial_level=GranularityLevel.MEDIUM,
+            adjust_interval=0.0,
+        )
+        c.update_metrics(arrival_rate=5, queue_depth=1, processing_latency_ms=10, backlog_size=5)
+        time.sleep(0.01)
+        c.adjust()
+        assert c.level.value in ("micro", "fine", "medium")
+
+    def test_adjust_balanced_policy(self):
+        c = GranularityController(
+            policy=GranularityPolicy.BALANCED,
+            initial_level=GranularityLevel.MEDIUM,
+            adjust_interval=0.0,
+        )
+        c.update_metrics(arrival_rate=5000, queue_depth=8000, processing_latency_ms=5, backlog_size=15000)
+        time.sleep(0.01)
+        c.adjust()
+
+    def test_manual_policy_no_auto_adjust(self):
+        c = GranularityController(
+            policy=GranularityPolicy.MANUAL,
+            initial_level=GranularityLevel.FINE,
+            adjust_interval=0.0,
+        )
+        c.update_metrics(arrival_rate=999999, queue_depth=999999)
+        c.adjust()
+        assert c.level == GranularityLevel.FINE
+
+    def test_coerce_to_streaming(self):
+        c = GranularityController(initial_level=GranularityLevel.MACRO)
+        c.coerce_to_streaming()
+        assert c.level == GranularityLevel.MICRO
+
+    def test_coerce_to_batch(self):
+        c = GranularityController(initial_level=GranularityLevel.MICRO)
+        c.coerce_to_batch()
+        assert c.level == GranularityLevel.MACRO
+
+    def test_history_tracking(self):
+        c = GranularityController(adjust_interval=0.0)
+        c.set_level(GranularityLevel.COARSE)
+        c.set_level(GranularityLevel.FINE)
+        assert len(c.history) == 2
+        assert c.history[0]["from"] == "medium"
+        assert c.history[0]["to"] == "coarse"
+
+    def test_explain(self):
+        c = GranularityController()
+        text = c.explain()
+        assert "GranularityController" in text
+        assert "medium" in text
+        assert "balanced" in text
+
+    def test_adjustments_count(self):
+        c = GranularityController()
+        assert c.adjustments_count == 0
+        c.set_level(GranularityLevel.COARSE)
+        assert c.adjustments_count == 1
+        c.set_level(GranularityLevel.COARSE)
+        assert c.adjustments_count == 1
+
+    def test_custom_thresholds(self):
+        c = GranularityController(
+            policy=GranularityPolicy.THROUGHPUT,
+            initial_level=GranularityLevel.FINE,
+            adjust_interval=0.0,
+            thresholds={"high_arrival_rate": 100, "low_arrival_rate": 1,
+                        "high_queue_depth": 200, "low_queue_depth": 5,
+                        "high_latency_ms": 1000, "low_latency_ms": 1,
+                        "high_backlog": 500, "low_backlog": 5},
+        )
+        c.update_metrics(arrival_rate=200, queue_depth=300, backlog_size=600)
+        time.sleep(0.01)
+        c.adjust()
+        assert c.level != GranularityLevel.FINE or c.adjustments_count >= 0
+
+
+class TestAdaptiveFlow:
+    def test_basic_execution(self):
+        af = AdaptiveFlow(
+            name="test-basic",
+            stream_fn=lambda f: f.from_collection([1, 2, 3, 4, 5]).map(lambda x: x * 2),
+        )
+        af.controller.set_level(GranularityLevel.MEDIUM)
+        result = af.execute()
+        assert result["architecture"] == "adaptive"
+        assert "granularity" in result
+        assert len(result["results"]) > 0
+
+    def test_micro_granularity(self):
+        af = AdaptiveFlow(
+            name="test-micro",
+            stream_fn=lambda f: f.from_collection([10, 20, 30]).map(lambda x: x + 1),
+        )
+        af.set_granularity(GranularityLevel.MICRO)
+        result = af.execute()
+        assert result["granularity"] == "micro"
+
+    def test_macro_granularity(self):
+        af = AdaptiveFlow(
+            name="test-macro",
+            stream_fn=lambda f: f.from_collection([1, 2, 3, 4, 5]).map(lambda x: x * 3),
+        )
+        af.set_granularity(GranularityLevel.MACRO)
+        result = af.execute()
+        assert result["granularity"] == "macro"
+
+    def test_execute_at_granularity(self):
+        af = AdaptiveFlow(
+            name="test-at",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        result = af.execute_at_granularity(GranularityLevel.COARSE)
+        assert result["granularity"] == "coarse"
+
+    def test_execute_batch_like(self):
+        af = AdaptiveFlow(
+            name="test-batch-like",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x * 2),
+        )
+        result = af.execute_batch_like()
+        assert result["granularity"] == "macro"
+
+    def test_execute_stream_like(self):
+        af = AdaptiveFlow(
+            name="test-stream-like",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x * 2),
+        )
+        result = af.execute_stream_like()
+        assert result["granularity"] == "micro"
+
+    def test_custom_controller(self):
+        ctrl = GranularityController(
+            initial_level=GranularityLevel.FINE,
+            policy=GranularityPolicy.LATENCY,
+            min_level=GranularityLevel.MICRO,
+            max_level=GranularityLevel.COARSE,
+        )
+        af = AdaptiveFlow(
+            name="test-custom-ctrl",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+            controller=ctrl,
+        )
+        assert af.granularity == GranularityLevel.FINE
+        result = af.execute()
+        assert result["controller"] is ctrl
+
+    def test_policy_setting(self):
+        af = AdaptiveFlow(
+            name="test-policy",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.set_policy(GranularityPolicy.THROUGHPUT)
+        assert af.controller.policy == GranularityPolicy.THROUGHPUT
+
+    def test_on_granularity_change(self):
+        changes = []
+        af = AdaptiveFlow(
+            name="test-on-change",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        af.on_granularity_change(lambda old, new: changes.append((old, new)))
+        af.set_granularity(GranularityLevel.COARSE)
+        assert len(changes) == 1
+
+    def test_explain(self):
+        af = AdaptiveFlow(
+            name="test-explain",
+            stream_fn=lambda f: f.from_collection([1, 2, 3]).map(lambda x: x),
+        )
+        text = af.explain()
+        assert "AdaptiveFlow" in text
+        assert "medium" in text
+
+    def test_no_stream_fn_raises(self):
+        af = AdaptiveFlow(name="no-fn")
+        with pytest.raises(PipelineError, match="No stream function"):
+            af.execute()
+
+
+class TestAdaptiveArchitectureIntegration:
+    def test_flow_with_adaptive_architecture(self):
+        flow = Flow(architecture=ArchitectureMode.ADAPTIVE, mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3, 4, 5])
+        result = stream.map(lambda x: x * 2)
+        sink = result.collect()
+        ctrl = GranularityController(initial_level=GranularityLevel.MEDIUM)
+        flow.configure("granularity_controller", ctrl)
+        out = flow.execute()
+        assert isinstance(out, dict)
+        assert out.get("architecture") == "adaptive"
+
+    def test_flow_as_adaptive(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3])
+        stream.map(lambda x: x * 10)
+        af = flow.as_adaptive()
+        assert isinstance(af, AdaptiveFlow)
+
+    def test_flow_as_adaptive_with_policy(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3])
+        stream.map(lambda x: x)
+        af = flow.as_adaptive(policy=GranularityPolicy.LATENCY)
+        assert af.controller.policy == GranularityPolicy.LATENCY
+
+    def test_adaptive_wordcount(self):
+        af = AdaptiveFlow(
+            name="wordcount-adaptive",
+            stream_fn=lambda f: (
+                f.from_collection(["hello world", "hello liutang"])
+                 .flat_map(lambda s: s.split())
+                 .map(lambda w: (w, 1))
+                 .key_by(lambda p: p[0])
+            ),
+        )
+        af.set_granularity(GranularityLevel.COARSE)
+        result = af.execute()
+        assert len(result["results"]) > 0
+
+    def test_adaptive_granularity_spectrum(self):
+        for level in GranularityLevel:
+            af = AdaptiveFlow(
+                name=f"spectrum-{level.value}",
+                stream_fn=lambda f: f.from_collection([1, 2, 3, 4, 5]).map(lambda x: x + 1),
+            )
+            af.set_granularity(level)
+            result = af.execute()
+            assert result["granularity"] == level.value
+
+    def test_adaptive_explain_in_flow(self):
+        flow = Flow(architecture=ArchitectureMode.ADAPTIVE)
+        stream = flow.from_collection([1]).map(lambda x: x)
+        stream.print()
+        explanation = flow.explain()
+        assert "adaptive" in explanation

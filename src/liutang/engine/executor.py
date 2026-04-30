@@ -14,7 +14,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from liutang.core.flow import Flow
-from liutang.core.stream import RuntimeMode, TableStream, DeliveryMode
+from liutang.core.stream import RuntimeMode, TableStream, DeliveryMode, ArchitectureMode
 from liutang.core.connector import (
     SourceKind, SinkKind, CollectionSource, FileSource, KafkaSource,
     DatagenSource, SocketSource, GeneratorSource,
@@ -33,6 +33,13 @@ class Executor:
 
     def execute(self) -> Any:
         self._validate()
+        arch = self._flow.architecture
+        if arch == ArchitectureMode.LAMBDA:
+            return self._execute_lambda()
+        elif arch == ArchitectureMode.KAPPA:
+            return self._execute_kappa()
+        elif arch == ArchitectureMode.ADAPTIVE:
+            return self._execute_adaptive()
         if self._flow.mode == RuntimeMode.BATCH:
             return self._execute_batch()
         return self._execute_streaming()
@@ -51,6 +58,7 @@ class Executor:
             f"Flow: {self._flow.name}",
             f"Engine: liutang (pure Python)",
             f"Mode: {self._flow.mode.value}",
+            f"Architecture: {self._flow.architecture.value}",
             f"Delivery: {self._flow.delivery_mode.value}",
             f"Parallelism: {self._flow.parallelism}",
             "",
@@ -65,6 +73,130 @@ class Executor:
         if self._flow.checkpoint_dir:
             lines.append(f"Checkpoint: {self._flow.checkpoint_dir}")
         return "\n".join(lines)
+
+    def _execute_lambda(self) -> Dict[str, Any]:
+        from liutang.core.serving import ServingView, MergeView
+        from liutang.core.lambda_flow import LambdaFlow
+        batch_results = {}
+        batch_serving = ServingView(merge_fn=MergeView.latest)
+        for src in self._flow.sources:
+            connector = src["connector"]
+            data = self._read_source(connector)
+            source_id = src["id"]
+            for sink in self._flow.sinks:
+                stream = sink["stream"]
+                if stream.id.startswith(source_id) or stream.id == source_id:
+                    operations = PipelineBuilder.from_operations(stream.operations())
+                    runner = StreamRunner(
+                        operations,
+                        parallelism=self._flow.parallelism,
+                        concurrency=self._flow.config.get("concurrency", "thread"),
+                        delivery_mode=self._flow.delivery_mode,
+                        max_retries=self._flow.max_retries,
+                    )
+                    batch_data = runner.run_batch(data)
+                    try:
+                        batch_serving.update_batch(batch_data)
+                    except Exception:
+                        pass
+                    batch_results[stream.id] = batch_data
+        speed_handles = self._execute_streaming()
+        return {
+            "architecture": "lambda",
+            "batch_results": batch_results,
+            "serving": batch_serving,
+            "speed_handles": speed_handles,
+        }
+
+    def _execute_kappa(self) -> Dict[str, Any]:
+        from liutang.core.serving import ServingView
+        serving = ServingView()
+        source_data = {}
+        for src in self._flow.sources:
+            connector = src["connector"]
+            data = self._read_source(connector)
+            source_data[src["id"]] = data
+            serving.update_batch(data)
+        streaming_result = self._execute_streaming()
+        event_log_path = self._flow.config.get("event_log_path")
+        event_log = None
+        if event_log_path:
+            from liutang.core.eventlog import EventLog
+            event_log = EventLog(event_log_path)
+            for src_id, records in source_data.items():
+                event_log.append_batch(records)
+        return {
+            "architecture": "kappa",
+            "results": serving.query_all(),
+            "handles": streaming_result,
+            "event_log": event_log,
+            "serving": serving,
+        }
+
+    def _execute_adaptive(self) -> Dict[str, Any]:
+        from liutang.core.granularity import GranularityController, GranularityLevel
+        controller = self._flow.config.get("granularity_controller")
+        if controller is None:
+            controller = GranularityController()
+        initial_level = controller.level
+        results: Dict[str, List[Any]] = {}
+        for src in self._flow.sources:
+            connector = src["connector"]
+            data = self._read_source(connector)
+            if self._flow._schema_enforcement and src.get("schema"):
+                data = self._enforce_schema(data, src["schema"])
+            source_id = src["id"]
+            total_records = len(data)
+            controller.update_metrics(
+                arrival_rate=total_records / max(0.001, controller.batch_timeout),
+                queue_depth=total_records,
+                backlog_size=total_records,
+            )
+            for sink in self._flow.sinks:
+                stream = sink["stream"]
+                if stream.id.startswith(source_id) or stream.id == source_id:
+                    operations = PipelineBuilder.from_operations(stream.operations())
+                    runner = StreamRunner(
+                        operations,
+                        parallelism=self._flow.parallelism,
+                        concurrency=self._flow.config.get("concurrency", "thread"),
+                        delivery_mode=self._flow.delivery_mode,
+                        max_retries=self._flow.max_retries,
+                    )
+                    chunk_size = max(1, controller.batch_size)
+                    all_sink_data: List[Any] = []
+                    processed = 0
+                    for chunk_start in range(0, len(data), chunk_size):
+                        chunk = data[chunk_start:chunk_start + chunk_size]
+                        chunk_result = runner.run_batch(chunk)
+                        processed += len(chunk)
+                        remaining = total_records - processed
+                        controller.update_metrics(
+                            arrival_rate=max(1.0, remaining / max(0.001, controller.batch_timeout)),
+                            queue_depth=remaining,
+                            backlog_size=remaining,
+                        )
+                        if remaining > 0:
+                            controller.adjust()
+                            chunk_size = max(1, controller.batch_size)
+                        all_sink_data.extend(chunk_result)
+                    sink_connector = sink["connector"]
+                    if "table_operations" in sink:
+                        all_sink_data = self._apply_table_ops(
+                            all_sink_data, sink["table_operations"], sink.get("table_schema"))
+                    self._write_sink(sink_connector, all_sink_data)
+                    results[stream.id] = all_sink_data
+                    self._maybe_checkpoint(runner)
+        return {
+            "architecture": "adaptive",
+            "granularity": controller.level.value,
+            "batch_size": controller.batch_size,
+            "batch_timeout": controller.batch_timeout,
+            "initial_granularity": initial_level.value,
+            "adjustments": controller.adjustments_count,
+            "controller": controller,
+            "results": results,
+        }
 
     def _execute_batch(self) -> Dict[str, List[Any]]:
         results: Dict[str, List[Any]] = {}

@@ -10,6 +10,7 @@ A pure-Python streaming data framework with native concurrency, watermark, windo
 - **Native concurrency** — local engine uses `threading` / `multiprocessing` / `concurrent.futures`
 - **Full streaming** — Watermark, event-time windows, keyed state, timers, checkpointing, switchable delivery semantics — all pure Python
 - **Unified API** — Same `Flow` / `Stream` API for batch and streaming modes
+- **Architecture fusion** — Lambda (batch+speed), Kappa (log+replay), and Adaptive (granularity-tunable) modes with one API
 
 ## Quick Start
 
@@ -130,6 +131,93 @@ flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.AT_MOST_ONCE)
 flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.EXACTLY_ONCE)
 ```
 
+### Lambda Architecture
+
+Dual-layer processing: batch layer for historical data + speed layer for real-time, merged via ServingView.
+
+```python
+# Lambda: batch layer + speed layer
+lf = liutang.LambdaFlow(
+    name="analytics",
+    batch_layer_fn=lambda f: f.from_collection(historical_data).map(transform),
+    speed_layer_fn=lambda f: f.from_collection(realtime_data).map(transform),
+    key_fn=lambda x: x["key"],
+    merge_fn=liutang.MergeView.latest,
+)
+result = lf.execute()  # batch + speed run in parallel, merged in serving view
+result = lf.query("user_123")  # query merged result
+```
+
+### Kappa Architecture
+
+Single-stream processing with event log replay for reprocessing.
+
+```python
+# Kappa: event log + replay
+kf = liutang.KappaFlow(
+    name="pipeline",
+    stream_fn=lambda f: f.from_kafka(topic="events").map(transform),
+    event_log_path="/data/events.log",
+)
+kf.execute()           # stream + log
+kf.append_to_log({"event": "new"})  # append events
+records = kf.replay()  # replay from log
+records = kf.replay(offset=100)  # replay from offset
+```
+
+### Architecture Mode
+
+Set architecture directly on Flow:
+
+```python
+flow = liutang.Flow(architecture=liutang.ArchitectureMode.LAMBDA)
+flow = liutang.Flow(architecture=liutang.ArchitectureMode.KAPPA)
+
+# Or convert an existing flow
+lf = flow.as_lambda()   # Flow -> LambdaFlow
+kf = flow.as_kappa(event_log_path="/data/events.log")  # Flow -> KappaFlow
+```
+
+### Adaptive Granularity Architecture
+
+Continuously adjustable granularity from micro-streaming to macro-batch, controlled by real-time metrics.
+
+```python
+# Adaptive: auto-adjust granularity based on throughput/latency
+af = liutang.AdaptiveFlow(
+    name="adaptive-pipeline",
+    stream_fn=lambda f: f.from_collection(data).map(transform),
+    policy=liutang.GranularityPolicy.BALANCED,
+    initial_granularity=liutang.GranularityLevel.MEDIUM,
+)
+
+# Execute at current granularity
+result = af.execute()
+
+# Or explicitly set granularity level
+af.set_granularity(liutang.GranularityLevel.MICRO)   # pure streaming (batch_size=1)
+af.set_granularity(liutang.GranularityLevel.MACRO)   # near-batch (batch_size=100000)
+
+# Quick shortcuts
+result = af.execute_stream_like()  # sets MICRO then executes
+result = af.execute_batch_like()   # sets MACRO then executes
+```
+
+**5 Granularity Levels:**
+
+| Level | Batch Size | Timeout | Mode |
+|-------|-----------|---------|------|
+| MICRO | 1 | 10ms | Pure streaming |
+| FINE | 10 | 100ms | Low-latency streaming |
+| MEDIUM | 100 | 500ms | Balanced |
+| COARSE | 1,000 | 2s | High-throughput |
+| MACRO | 100,000 | 10s | Near-batch |
+
+**3 Adjustment Policies:**
+- `THROUGHPUT` — favors larger batches when data volume is high
+- `LATENCY` — favors smaller batches when latency must be low
+- `BALANCED` — adjusts based on combined throughput + latency signals
+
 ### Sources
 
 ```python
@@ -204,6 +292,11 @@ liutang/
 │   │   ├── window.py            # WindowType (tumbling/sliding/session/over/global)
 │   │   ├── connector.py         # Source/Sink connectors (pure Python)
 │   │   ├── state.py             # Full state management (Value/List/Map/Reducing/Aggregating)
+│   │   ├── eventlog.py         # EventLog — append-only segmented log
+│   │   ├── serving.py          # ServingView + MergeView (batch/speed merge)
+│   │   ├── lambda_flow.py      # LambdaFlow + KappaFlow
+│   │   ├── granularity.py     # GranularityLevel + GranularityController
+│   │   ├── adaptive_flow.py  # AdaptiveFlow — granularity-tunable architecture
 │   │   ├── errors.py            # Exception hierarchy
 │   │   └── (no external dependencies!)
 │   └── engine/
@@ -211,7 +304,7 @@ liutang/
 │       ├── runner.py            # StreamRunner — parallel pipeline execution
 │       └── watermark.py         # WatermarkTracker
 ├── examples/                    # Example pipelines
-├── tests/                       # 73 tests
+├── tests/                       # 183 tests
 ├── upload_pypi.sh               # Unix publish script
 ├── upload_pypi.bat              # Windows publish script
 └── pyproject.toml               # Zero required dependencies
@@ -227,4 +320,4 @@ GPL-3.0-or-later
 
 ## Full Comparison
 
-See [COMPARISON.md](COMPARISON.md) — comprehensive comparison with PyFlink / PySpark / Beam / Bytewax / Faust / Streamz.
+See [COMPARISON.md](COMPARISON.md) — comprehensive comparison with PyFlink / PySpark / Beam / Bytewax / Faust / Streamz. LiuTang is the only pure-Python framework supporting Lambda, Kappa, and Adaptive architecture modes natively.
