@@ -1,14 +1,14 @@
 import pytest
 import time
 from liutang import (
-    Flow, Stream, KeyedStream, RuntimeMode,
+    Flow, Stream, KeyedStream, RuntimeMode, DeliveryMode,
     FieldType, Schema, WindowType, WindowKind,
     CollectionSource, GeneratorSource, FileSource, PrintSink,
     CallbackSink, CollectSink, DatagenSource,
     MemoryStateBackend, KeyedState, ValueState, ListState, MapState,
     RuntimeContext, TimerService, KeyedProcessFunction, ProcessFunction,
     WatermarkStrategy, Watermark,
-    LiuTangError, PipelineError, quick_flow,
+    LiuTangError, PipelineError, DeliveryError, quick_flow,
 )
 
 
@@ -460,3 +460,120 @@ class TestGeneratorSource:
         sink = result.collect()
         flow.execute()
         assert sorted(sink.results) == [1, 11, 21, 31, 41]
+
+
+class TestDeliveryMode:
+    def test_delivery_mode_default(self):
+        flow = Flow()
+        assert flow.delivery_mode == DeliveryMode.AT_LEAST_ONCE
+
+    def test_delivery_mode_at_most_once(self):
+        flow = Flow(delivery_mode=DeliveryMode.AT_MOST_ONCE)
+        assert flow.delivery_mode == DeliveryMode.AT_MOST_ONCE
+
+    def test_delivery_mode_exactly_once(self):
+        flow = Flow(delivery_mode=DeliveryMode.EXACTLY_ONCE)
+        assert flow.delivery_mode == DeliveryMode.EXACTLY_ONCE
+
+    def test_delivery_mode_max_retries(self):
+        flow = Flow(max_retries=5)
+        assert flow.max_retries == 5
+
+    def test_at_least_once_normal(self):
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.AT_LEAST_ONCE)
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.map(lambda x: x * 2)
+        sink = result.collect()
+        flow.execute()
+        assert sorted(sink.results) == [2, 4, 6]
+
+    def test_at_most_once_skip_on_error(self):
+        call_count = {"n": 0}
+
+        def faulty_map(x):
+            call_count["n"] += 1
+            if x == 2:
+                raise ValueError("transient error")
+            return x * 2
+
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.AT_MOST_ONCE)
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.map(faulty_map)
+        sink = result.collect()
+        flow.execute()
+        assert sorted(sink.results) == []
+
+    def test_at_least_once_retry_succeeds(self):
+        attempts = {"n": 0}
+
+        def retry_map(x):
+            attempts["n"] += 1
+            if x == 2 and attempts["n"] <= 1:
+                raise ValueError("retry me")
+            return x * 2
+
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.AT_LEAST_ONCE, max_retries=3)
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.map(retry_map)
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) == 3
+        assert sorted(sink.results) == [2, 4, 6]
+
+    def test_at_least_once_retry_exhausted_raises(self):
+        def always_fail(x):
+            raise ValueError("permanent error")
+
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.AT_LEAST_ONCE, max_retries=1)
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.map(always_fail)
+        sink = result.collect()
+        with pytest.raises(ValueError):
+            flow.execute()
+
+    def test_exactly_once_deduplication(self):
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.EXACTLY_ONCE)
+        stream = flow.from_collection([1, 1, 2, 2, 3])
+        result = stream.map(lambda x: x * 2)
+        sink = result.collect()
+        flow.execute()
+        assert sorted(sink.results) == [2, 4, 6]
+
+    def test_exactly_once_preserves_order(self):
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.EXACTLY_ONCE)
+        stream = flow.from_collection([1, 2, 3, 2, 1])
+        result = stream.map(lambda x: x * 10)
+        sink = result.collect()
+        flow.execute()
+        assert sink.results[0] == 10
+        assert sink.results[1] == 20
+        assert sink.results[2] == 30
+
+    def test_at_most_once_no_retry_on_sink_error(self):
+        results = []
+
+        def fail_on_three(x):
+            if x == 3:
+                raise ValueError("sink error")
+            results.append(x)
+
+        flow = Flow(mode=RuntimeMode.BATCH, delivery_mode=DeliveryMode.AT_MOST_ONCE,
+                     max_retries=0)
+        stream = flow.from_collection([1, 2, 3, 4])
+        result = stream.map(lambda x: x)
+        result.sink_to(CallbackSink(func=fail_on_three))
+        flow.execute()
+        assert 1 in results
+        assert 2 in results
+
+    def test_explain_includes_delivery_mode(self):
+        flow = Flow(delivery_mode=DeliveryMode.EXACTLY_ONCE)
+        stream = flow.from_collection([1, 2, 3]).map(lambda x: x)
+        result = stream.print()
+        explanation = flow.explain()
+        assert "exactly_once" in explanation
+
+    def test_delivery_mode_enum_values(self):
+        assert DeliveryMode.AT_LEAST_ONCE.value == "at_least_once"
+        assert DeliveryMode.AT_MOST_ONCE.value == "at_most_once"
+        assert DeliveryMode.EXACTLY_ONCE.value == "exactly_once"

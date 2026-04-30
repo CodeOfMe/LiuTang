@@ -20,3 +20,7 @@ class WatermarkError(LiuTangError):
 
 class StateError(LiuTangError):
     pass
+
+
+class DeliveryError(LiuTangError):
+    pass

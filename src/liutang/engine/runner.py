@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import threading
 import time
-import traceback
 import queue
 import collections
 import csv
@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from typing import Any, Callable, Dict, List, Optional
 
 from liutang.core.errors import PipelineError
+from liutang.core.stream import DeliveryMode
 from liutang.core.state import (
     KeyedProcessFunction, ProcessFunction, RuntimeContext, TimerService,
     WatermarkStrategy,
@@ -74,25 +75,50 @@ class PipelineBuilder:
 
 
 class StreamRunner:
+    MAX_PROCESSED_IDS = 100000
+
     def __init__(
         self,
         operations: List[PipelineOp],
         parallelism: int = 1,
         concurrency: str = "thread",
         max_workers: Optional[int] = None,
+        delivery_mode: DeliveryMode = DeliveryMode.AT_LEAST_ONCE,
+        max_retries: int = 3,
     ):
         self._operations = operations
         self._parallelism = parallelism
         self._concurrency = concurrency
         self._max_workers = max_workers or max(1, parallelism * 2)
+        self._delivery_mode = delivery_mode
+        self._max_retries = max_retries
         self._runtime_context = RuntimeContext()
         self._timer_service = TimerService()
         self._runtime_context.timer_service = self._timer_service
+        self._processed_ids: collections.OrderedDict = collections.OrderedDict()
+        self._late_output: List[Any] = []
+        self._watermark_tracker = None
+        self._batches_processed = 0
+        self._records_processed = 0
+        self._records_dropped = 0
+
+    @property
+    def late_output(self) -> List[Any]:
+        return list(self._late_output)
+
+    @property
+    def stats(self) -> Dict[str, Any]:
+        return {
+            "batches_processed": self._batches_processed,
+            "records_processed": self._records_processed,
+            "records_dropped": self._records_dropped,
+            "processed_ids_count": len(self._processed_ids),
+        }
 
     def run_batch(self, data: List[Any]) -> List[Any]:
         result: List[Any] = list(data)
         for op in self._operations:
-            result = self._apply_op(op, result)
+            result = self._apply_op_with_delivery(op, result)
         return result
 
     def run_streaming(
@@ -103,6 +129,7 @@ class StreamRunner:
         batch_size: int = 100,
         batch_timeout: float = 1.0,
         watermark_strategy: Optional[WatermarkStrategy] = None,
+        late_callback: Optional[Callable[[Any], None]] = None,
     ) -> None:
         if stop_event is None:
             stop_event = threading.Event()
@@ -111,29 +138,172 @@ class StreamRunner:
         if watermark_strategy:
             from liutang.engine.watermark import WatermarkTracker
             watermark_tracker = WatermarkTracker(watermark_strategy)
+            self._watermark_tracker = watermark_tracker
+        adaptive_batch_size = batch_size
         while not stop_event.is_set():
             try:
                 item = source_queue.get(timeout=0.1)
+                if item is None:
+                    break
                 buffer.append(item)
                 if watermark_tracker:
                     ts = self._extract_timestamp(item, watermark_strategy)
                     if ts is not None:
                         watermark_tracker.on_event(ts)
-                if len(buffer) >= batch_size:
-                    self._process_batch_and_emit(buffer, sink_callback)
+                if len(buffer) >= adaptive_batch_size:
+                    self._process_batch_and_emit(buffer, sink_callback, late_callback)
+                    self._batches_processed += 1
                     buffer = []
+                    if watermark_tracker:
+                        self._timer_service.advance_watermark(watermark_tracker.current_watermark())
+                    if self._flow_config_has("adaptive_batch"):
+                        queue_depth = source_queue.qsize()
+                        if queue_depth > batch_size * 2:
+                            adaptive_batch_size = min(batch_size * 4, adaptive_batch_size * 2)
+                        elif queue_depth < batch_size // 2:
+                            adaptive_batch_size = max(batch_size // 2, adaptive_batch_size // 2)
             except queue.Empty:
                 if buffer:
-                    self._process_batch_and_emit(buffer, sink_callback)
+                    self._process_batch_and_emit(buffer, sink_callback, late_callback)
+                    self._batches_processed += 1
                     buffer = []
         if buffer:
-            self._process_batch_and_emit(buffer, sink_callback)
+            self._process_batch_and_emit(buffer, sink_callback, late_callback)
 
-    def _process_batch_and_emit(self, batch: List[Any], callback: Optional[Callable[[Any], None]]) -> None:
-        results = self.run_batch(batch)
-        if callback:
-            for r in results:
-                callback(r)
+    def _flow_config_has(self, key: str) -> bool:
+        return False
+
+    def _process_batch_and_emit(self, batch: List[Any], callback: Optional[Callable[[Any], None]],
+                                 late_callback: Optional[Callable[[Any], None]] = None) -> None:
+        try:
+            filtered_batch = []
+            for item in batch:
+                if self._watermark_tracker and self._is_late_record(item):
+                    self._records_dropped += 1
+                    self._late_output.append(item)
+                    if late_callback:
+                        late_callback(item)
+                    continue
+                filtered_batch.append(item)
+            if not filtered_batch:
+                return
+            results = self.run_batch(filtered_batch)
+            self._records_processed += len(filtered_batch)
+            if callback:
+                for r in results:
+                    if self._delivery_mode == DeliveryMode.EXACTLY_ONCE:
+                        rid = self._record_id(r)
+                        if rid not in self._processed_ids:
+                            self._processed_ids[rid] = True
+                            self._evict_processed_ids()
+                            callback(r)
+                    else:
+                        callback(r)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            if self._delivery_mode == DeliveryMode.AT_MOST_ONCE:
+                self._records_dropped += len(batch)
+            elif self._delivery_mode == DeliveryMode.AT_LEAST_ONCE:
+                for attempt in range(self._max_retries):
+                    try:
+                        results = self.run_batch(batch)
+                        if callback:
+                            for r in results:
+                                callback(r)
+                        return
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception:
+                        time.sleep(0.01 * (attempt + 1))
+            else:
+                raise
+
+    def _is_late_record(self, record: Any) -> bool:
+        if self._watermark_tracker is None:
+            return False
+        ops = [op for op in self._operations if op.op_type.startswith("window_")]
+        if not ops:
+            return False
+        window = None
+        for op in ops:
+            w = op.kwargs.get("window")
+            if w and w.allowed_lateness > 0:
+                window = w
+                break
+        if window is None:
+            return False
+        time_field = window.time_field
+        if time_field is None:
+            return False
+        ts = self._extract_timestamp(record, None) or self._extract_field(record, time_field)
+        if ts is None:
+            return False
+        return self._watermark_tracker.is_late(float(ts))
+
+    def _evict_processed_ids(self) -> None:
+        while len(self._processed_ids) > self.MAX_PROCESSED_IDS:
+            self._processed_ids.popitem(last=False)
+
+    @staticmethod
+    def _record_id(record: Any) -> Any:
+        try:
+            if isinstance(record, dict):
+                canonical = json.dumps(record, sort_keys=True, default=str)
+            elif isinstance(record, (list, tuple)):
+                canonical = json.dumps(record, default=str)
+            else:
+                canonical = repr(record)
+            return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        except Exception:
+            return repr(record)
+
+    def _apply_op_with_delivery(self, op: PipelineOp, data: List[Any]) -> List[Any]:
+        if self._delivery_mode == DeliveryMode.AT_MOST_ONCE:
+            return self._apply_op_at_most_once(op, data)
+        elif self._delivery_mode == DeliveryMode.EXACTLY_ONCE:
+            return self._apply_op_exactly_once(op, data)
+        else:
+            return self._apply_op_at_least_once(op, data)
+
+    def _apply_op_at_most_once(self, op: PipelineOp, data: List[Any]) -> List[Any]:
+        try:
+            return self._apply_op(op, data)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            self._records_dropped += len(data)
+            return []
+
+    def _apply_op_at_least_once(self, op: PipelineOp, data: List[Any]) -> List[Any]:
+        last_error = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                return self._apply_op(op, data)
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as e:
+                last_error = e
+                if attempt < self._max_retries:
+                    time.sleep(0.01 * (attempt + 1))
+        raise last_error
+
+    def _apply_op_exactly_once(self, op: PipelineOp, data: List[Any]) -> List[Any]:
+        deduped = []
+        for r in data:
+            rid = self._record_id(r)
+            if rid not in self._processed_ids:
+                self._processed_ids[rid] = True
+                self._evict_processed_ids()
+                deduped.append(r)
+        try:
+            return self._apply_op(op, deduped)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            for r in deduped:
+                self._processed_ids.pop(self._record_id(r), None)
+            raise
 
     def _apply_op(self, op: PipelineOp, data: List[Any]) -> List[Any]:
         keyed_ops = {PipelineOp.KEY_BY, PipelineOp.KEYED_PROCESS, PipelineOp.KEYED_REDUCE,
@@ -188,7 +358,7 @@ class StreamRunner:
             return [result_item]
         elif op.op_type == PipelineOp.SUM:
             field_val = op.kwargs.get("field", 0)
-            return [sum(self._extract_field(x, field_val) for x in data)] if data else [0]
+            return [sum(self._extract_field(x, field_val) for x in data)] if data else []
         elif op.op_type == PipelineOp.COUNT:
             return [len(data)]
         elif op.op_type == PipelineOp.MIN:
@@ -240,7 +410,7 @@ class StreamRunner:
                     if out is not None:
                         results.append(out)
             wm_timestamp = self._timer_service.current_watermark if self._timer_service else None
-            if wm_timestamp is not None:
+            if wm_timestamp is not None and wm_timestamp > float("-inf"):
                 for cb in self._timer_service.fire_event_time_timers(wm_timestamp):
                     if cb:
                         results.append(cb)
@@ -295,32 +465,35 @@ class StreamRunner:
         results: List[Any] = []
         with ExecutorCls(max_workers=self._max_workers) as pool:
             if op.op_type == PipelineOp.MAP:
-                futures = [pool.submit(lambda c: [op.func(x) for x in c], chunk) for chunk in chunks]
+                fn = op.func
+                futures = [pool.submit(lambda c, f=fn: [f(x) for x in c], chunk) for chunk in chunks]
             elif op.op_type == PipelineOp.FLAT_MAP:
-                futures = [pool.submit(lambda c: [y for x in c for y in op.func(x)], chunk) for chunk in chunks]
+                fn = op.func
+                futures = [pool.submit(lambda c, f=fn: [y for x in c for y in f(x)], chunk) for chunk in chunks]
             elif op.op_type == PipelineOp.FILTER:
-                futures = [pool.submit(lambda c: [x for x in c if op.func(x)], chunk) for chunk in chunks]
+                fn = op.func
+                futures = [pool.submit(lambda c, f=fn: [x for x in c if f(x)], chunk) for chunk in chunks]
             elif op.op_type == PipelineOp.PROCESS:
                 if isinstance(op.func, ProcessFunction):
                     def _process_chunk_process(pf, c):
-                        results = []
+                        r = []
                         for x in c:
-                            r = pf.process(x)
-                            if r is not None:
-                                results.append(r)
-                        return results
+                            out = pf.process(x)
+                            if out is not None:
+                                r.append(out)
+                        return r
                     futures = [pool.submit(_process_chunk_process, op.func, chunk) for chunk in chunks]
                 else:
                     def _process_chunk_func(fn, c):
-                        results = []
+                        r = []
                         for x in c:
-                            r = fn(x)
-                            if r is not None:
-                                if isinstance(r, (list, tuple)):
-                                    results.extend(r)
+                            out = fn(x)
+                            if out is not None:
+                                if isinstance(out, (list, tuple)):
+                                    r.extend(out)
                                 else:
-                                    results.append(r)
-                        return results
+                                    r.append(out)
+                        return r
                     futures = [pool.submit(_process_chunk_func, op.func, chunk) for chunk in chunks]
             else:
                 return self._apply_op_sequential(op, data)
@@ -360,11 +533,11 @@ class StreamRunner:
         time_field = window.time_field
         if time_field and data:
             if window.kind == WindowKind.TUMBLING:
-                return self._tumbling_window(op, data, window.size, time_field)
+                return self._tumbling_window(op, data, window.size, time_field, window.allowed_lateness)
             elif window.kind == WindowKind.SLIDING:
-                return self._sliding_window(op, data, window.size, window.slide, time_field)
+                return self._sliding_window(op, data, window.size, window.slide, time_field, window.allowed_lateness)
             elif window.kind == WindowKind.SESSION:
-                return self._session_window(op, data, window.gap, time_field)
+                return self._session_window(op, data, window.gap, time_field, window.allowed_lateness)
             elif window.kind == WindowKind.OVER:
                 return self._over_window(op, data, time_field)
             elif window.kind == WindowKind.GLOBAL:
@@ -373,7 +546,8 @@ class StreamRunner:
             return self._apply_window_agg(op, data)
         return self._apply_window_agg(op, data)
 
-    def _tumbling_window(self, op: PipelineOp, data: List[Any], size: Any, time_field: str) -> List[Any]:
+    def _tumbling_window(self, op: PipelineOp, data: List[Any], size: Any, time_field: str,
+                          allowed_lateness: float = 0.0) -> List[Any]:
         if not data:
             return []
         windows: Dict[int, List[Any]] = collections.defaultdict(list)
@@ -382,6 +556,10 @@ class StreamRunner:
             ts = self._extract_timestamp(record, None) or self._extract_field(record, time_field)
             if ts is not None:
                 window_key = int(float(ts) / size_val)
+                if allowed_lateness > 0 and self._watermark_tracker:
+                    if self._watermark_tracker.is_late(float(ts)):
+                        self._late_output.append(record)
+                        continue
                 windows[window_key].append(record)
             else:
                 windows[0].append(record)
@@ -390,7 +568,8 @@ class StreamRunner:
             results.extend(self._apply_window_agg(op, window_data))
         return results
 
-    def _sliding_window(self, op: PipelineOp, data: List[Any], size: Any, slide: Any, time_field: str) -> List[Any]:
+    def _sliding_window(self, op: PipelineOp, data: List[Any], size: Any, slide: Any,
+                         time_field: str, allowed_lateness: float = 0.0) -> List[Any]:
         if not data:
             return []
         size_val = size if isinstance(size, (int, float)) else 1.0
@@ -399,10 +578,16 @@ class StreamRunner:
         for record in data:
             ts = self._extract_field(record, time_field) if time_field else None
             if ts is not None:
-                end = int(float(ts) / slide_val) + 1
-                start = max(0, int((float(ts) - size_val) / slide_val))
-                for i in range(start, end + 1):
-                    windows[i].append(record)
+                if allowed_lateness > 0 and self._watermark_tracker:
+                    if self._watermark_tracker.is_late(float(ts)):
+                        self._late_output.append(record)
+                        continue
+                w_start = int(float(ts) / slide_val)
+                first_window = max(0, w_start - int(size_val / slide_val) + 1)
+                for i in range(first_window, w_start + 1):
+                    window_start = i * slide_val
+                    if float(ts) >= window_start and float(ts) < window_start + size_val:
+                        windows[i].append(record)
             else:
                 windows[0].append(record)
         results = []
@@ -410,7 +595,8 @@ class StreamRunner:
             results.extend(self._apply_window_agg(op, window_data))
         return results
 
-    def _session_window(self, op: PipelineOp, data: List[Any], gap: Any, time_field: str) -> List[Any]:
+    def _session_window(self, op: PipelineOp, data: List[Any], gap: Any, time_field: str,
+                         allowed_lateness: float = 0.0) -> List[Any]:
         if not data:
             return []
         gap_val = gap if isinstance(gap, (int, float)) else 5.0

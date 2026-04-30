@@ -8,7 +8,7 @@ A pure-Python streaming data framework with native concurrency, watermark, windo
 
 - **Zero dependencies** — `pip install liutang` needs only Python stdlib; no version hell
 - **Native concurrency** — local engine uses `threading` / `multiprocessing` / `concurrent.futures`
-- **Full streaming** — Watermark, event-time windows, keyed state, timers, checkpointing — all pure Python
+- **Full streaming** — Watermark, event-time windows, keyed state, timers, checkpointing, switchable delivery semantics — all pure Python
 - **Unified API** — Same `Flow` / `Stream` API for batch and streaming modes
 
 ## Quick Start
@@ -117,6 +117,19 @@ backend2 = liutang.MemoryStateBackend()
 backend2.restore(snapshot)       # restore state
 ```
 
+### Delivery Semantics
+
+```python
+# At-least-once (default): retries on failure, may produce duplicates
+flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.AT_LEAST_ONCE, max_retries=3)
+
+# At-most-once: skips failed records, best-effort delivery
+flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.AT_MOST_ONCE)
+
+# Exactly-once: deduplicates via hash-based tracking
+flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.EXACTLY_ONCE)
+```
+
 ### Sources
 
 ```python
@@ -198,7 +211,7 @@ liutang/
 │       ├── runner.py            # StreamRunner — parallel pipeline execution
 │       └── watermark.py         # WatermarkTracker
 ├── examples/                    # Example pipelines
-├── tests/                       # 60 tests
+├── tests/                       # 73 tests
 ├── upload_pypi.sh               # Unix publish script
 ├── upload_pypi.bat              # Windows publish script
 └── pyproject.toml               # Zero required dependencies

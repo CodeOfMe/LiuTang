@@ -8,7 +8,7 @@
 
 - **零依赖** — `pip install liutang` 只需 Python 标准库，没有版本灾难
 - **原生并发** — 本地引擎用 `threading` / `multiprocessing` / `concurrent.futures` 实现并行
-- **完整流式** — 窗口、水位线(Watermark)、KeyedState、定时器、Checkpoint 全部纯 Python 实现
+- **完整流式** — 窗口、水位线(Watermark)、KeyedState、定时器、Checkpoint、可切换投递语义 — 全部纯 Python 实现
 - **API 统一** — 同一套 `Flow` / `Stream` API 同时支持批处理和流处理
 
 ## 快速开始
@@ -117,6 +117,19 @@ backend.set_value("key", "value")
 snapshot = backend.checkpoint()  # 保存快照
 backend2 = liutang.MemoryStateBackend()
 backend2.restore(snapshot)      # 恢复快照
+```
+
+### 投递语义 (Delivery Semantics)
+
+```python
+# 至少一次 (默认): 失败重试，可能产生重复
+flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.AT_LEAST_ONCE, max_retries=3)
+
+# 最多一次: 跳过失败记录，尽力投递
+flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.AT_MOST_ONCE)
+
+# 恰好一次: 基于哈希去重
+flow = liutang.Flow(delivery_mode=liutang.DeliveryMode.EXACTLY_ONCE)
 ```
 
 ### 数据源 (Sources)
@@ -230,7 +243,7 @@ liutang/
 │       ├── runner.py            # StreamRunner — 并行管道执行
 │       └── watermark.py         # WatermarkTracker
 ├── examples/                    # 示例管道
-├── tests/                       # 60 个测试
+├── tests/                       # 73 个测试
 ├── upload_pypi.sh               # Unix 发布脚本
 ├── upload_pypi.bat              # Windows 发布脚本
 └── pyproject.toml               # 零依赖!

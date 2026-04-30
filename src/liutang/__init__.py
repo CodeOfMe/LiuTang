@@ -23,6 +23,7 @@ from liutang.core.stream import (
     GroupedTable,
     WindowedTable,
     RuntimeMode,
+    DeliveryMode,
 )
 from liutang.core.schema import FieldType, Schema, Field
 from liutang.core.window import WindowType, WindowKind
@@ -67,6 +68,7 @@ from liutang.core.errors import (
     ConnectorError,
     WatermarkError,
     StateError,
+    DeliveryError,
 )
 
 
@@ -83,6 +85,7 @@ __all__ = [
     "GroupedTable",
     "WindowedTable",
     "RuntimeMode",
+    "DeliveryMode",
     "FieldType",
     "Schema",
     "Field",
@@ -122,5 +125,6 @@ __all__ = [
     "ConnectorError",
     "WatermarkError",
     "StateError",
+    "DeliveryError",
     "quick_flow",
 ]

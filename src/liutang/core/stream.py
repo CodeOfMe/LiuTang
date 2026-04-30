@@ -13,6 +13,12 @@ class RuntimeMode(Enum):
     BATCH = "batch"
 
 
+class DeliveryMode(Enum):
+    AT_LEAST_ONCE = "at_least_once"
+    AT_MOST_ONCE = "at_most_once"
+    EXACTLY_ONCE = "exactly_once"
+
+
 class Stream:
     def __init__(self, flow: "Flow", stream_id: str, schema: Optional[Schema] = None):
         self._flow = flow

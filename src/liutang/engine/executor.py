@@ -4,11 +4,13 @@ import json
 import queue
 import threading
 import time
+import traceback
 import socket
 import csv
 import io
 import random
 import sys
+import os
 from typing import Any, Dict, List, Optional
 
 from liutang.core.flow import Flow
@@ -37,6 +39,7 @@ class Executor:
             f"Flow: {self._flow.name}",
             f"Engine: liutang (pure Python)",
             f"Mode: {self._flow.mode.value}",
+            f"Delivery: {self._flow.delivery_mode.value}",
             f"Parallelism: {self._flow.parallelism}",
             "",
         ]
@@ -62,8 +65,13 @@ class Executor:
                 stream = sink["stream"]
                 if stream.id.startswith(source_id) or stream.id == source_id:
                     operations = PipelineBuilder.from_operations(stream.operations())
-                    runner = StreamRunner(operations, parallelism=self._flow.parallelism,
-                                          concurrency=self._flow.config.get("concurrency", "thread"))
+                    runner = StreamRunner(
+                        operations,
+                        parallelism=self._flow.parallelism,
+                        concurrency=self._flow.config.get("concurrency", "thread"),
+                        delivery_mode=self._flow.delivery_mode,
+                        max_retries=self._flow.max_retries,
+                    )
                     sink_data = runner.run_batch(data)
                     connector = sink["connector"]
                     if "table_operations" in sink:
@@ -75,8 +83,13 @@ class Executor:
                 for s in self._flow._streams:
                     if s.id.startswith(source_id):
                         operations = PipelineBuilder.from_operations(s.operations())
-                        runner = StreamRunner(operations, parallelism=self._flow.parallelism,
-                                              concurrency=self._flow.config.get("concurrency", "thread"))
+                        runner = StreamRunner(
+                            operations,
+                            parallelism=self._flow.parallelism,
+                            concurrency=self._flow.config.get("concurrency", "thread"),
+                            delivery_mode=self._flow.delivery_mode,
+                            max_retries=self._flow.max_retries,
+                        )
                         results[s.id] = runner.run_batch(data)
                         break
         return results
@@ -103,8 +116,13 @@ class Executor:
             connector = sink["connector"]
             stream_obj = self._find_stream(stream.id)
             operations = PipelineBuilder.from_operations(stream_obj.operations()) if stream_obj else []
-            runner = StreamRunner(operations, parallelism=self._flow.parallelism,
-                                  concurrency=self._flow.config.get("concurrency", "thread"))
+            runner = StreamRunner(
+                operations,
+                parallelism=self._flow.parallelism,
+                concurrency=self._flow.config.get("concurrency", "thread"),
+                delivery_mode=self._flow.delivery_mode,
+                max_retries=self._flow.max_retries,
+            )
             watermark_strategy = stream_obj._watermark_strategy if stream_obj else None
             stop_event = stop_events.get(src_id, threading.Event())
             def make_callback(sink_connector: Any, collect_list: Optional[list] = None) -> Any:
@@ -303,18 +321,48 @@ class Executor:
         return []
 
     def _write_sink(self, connector: Any, data: List[Any]) -> None:
-        if connector.kind() == SinkKind.PRINT:
-            for item in data:
-                print(item)
-        elif connector.kind() == SinkKind.FILE:
+        if connector.kind() == SinkKind.FILE:
             with open(connector.path, "w", encoding="utf-8") as f:
                 for item in data:
                     f.write(json.dumps(item, default=str) + "\n")
-        elif connector.kind() == SinkKind.CALLBACK:
-            for item in data:
-                connector.func(item)
         elif connector.kind() == SinkKind.COLLECT:
             connector.results.extend(data)
+        else:
+            for item in data:
+                self._write_sink_item(connector, item)
+
+    def _write_sink_item(self, connector: Any, item: Any) -> None:
+        from liutang.core.stream import DeliveryMode
+        if self._flow.delivery_mode == DeliveryMode.AT_MOST_ONCE:
+            try:
+                if connector.kind() == SinkKind.PRINT:
+                    print(item)
+                elif connector.kind() == SinkKind.CALLBACK:
+                    connector.func(item)
+                elif connector.kind() == SinkKind.COLLECT:
+                    connector.results.append(item)
+            except Exception:
+                pass
+        elif self._flow.delivery_mode == DeliveryMode.AT_LEAST_ONCE:
+            for attempt in range(self._flow.max_retries + 1):
+                try:
+                    if connector.kind() == SinkKind.PRINT:
+                        print(item)
+                    elif connector.kind() == SinkKind.CALLBACK:
+                        connector.func(item)
+                    elif connector.kind() == SinkKind.COLLECT:
+                        connector.results.append(item)
+                    break
+                except Exception:
+                    if attempt == self._flow.max_retries:
+                        raise
+        else:
+            if connector.kind() == SinkKind.PRINT:
+                print(item)
+            elif connector.kind() == SinkKind.CALLBACK:
+                connector.func(item)
+            elif connector.kind() == SinkKind.COLLECT:
+                connector.results.append(item)
 
     def _apply_table_ops(self, data: List[Any], operations: List[Dict[str, Any]],
                           schema: Any = None) -> List[Any]:

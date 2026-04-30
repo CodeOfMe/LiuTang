@@ -5,7 +5,7 @@ import queue
 import time
 from typing import Any, Dict, List, Optional
 
-from liutang.core.stream import Stream, TableStream, RuntimeMode
+from liutang.core.stream import Stream, TableStream, RuntimeMode, DeliveryMode
 from liutang.core.schema import Schema
 from liutang.core.connector import SourceConnector, SinkConnector, PrintSink, CollectSink
 from liutang.core.errors import PipelineError
@@ -18,11 +18,15 @@ class Flow:
         engine: str = "local",
         mode: RuntimeMode = RuntimeMode.STREAMING,
         parallelism: int = 1,
+        delivery_mode: DeliveryMode = DeliveryMode.AT_LEAST_ONCE,
+        max_retries: int = 3,
     ):
         self._name = name
         self._engine_name = engine
         self._mode = mode
         self._parallelism = parallelism
+        self._delivery_mode = delivery_mode
+        self._max_retries = max_retries
         self._sources: List[Dict[str, Any]] = []
         self._sinks: List[Dict[str, Any]] = []
         self._streams: List[Stream] = []
@@ -45,6 +49,14 @@ class Flow:
     @property
     def parallelism(self) -> int:
         return self._parallelism
+
+    @property
+    def delivery_mode(self) -> DeliveryMode:
+        return self._delivery_mode
+
+    @property
+    def max_retries(self) -> int:
+        return self._max_retries
 
     @property
     def sources(self) -> List[Dict[str, Any]]:
