@@ -1,19 +1,17 @@
 from liutang.core.errors import (
     LiuTangError,
-    EngineNotAvailableError,
-    EngineVersionError,
-    SchemaError,
     PipelineError,
+    SchemaError,
     ConnectorError,
-    SerializationError,
+    WatermarkError,
+    StateError,
 )
 
 __all__ = [
     "LiuTangError",
-    "EngineNotAvailableError",
-    "EngineVersionError",
-    "SchemaError",
     "PipelineError",
+    "SchemaError",
     "ConnectorError",
-    "SerializationError",
+    "WatermarkError",
+    "StateError",
 ]

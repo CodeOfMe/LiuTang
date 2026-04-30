@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "liutang"
 version = "0.1.0"
-description = "流淌 - A unified streaming data framework with native Python concurrency, optional Flink/Spark backends"
+description = "流淌 - A pure-Python streaming data framework with native concurrency, watermark, windowing, and stateful processing"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.9"
 authors = [
     { name = "LiuTang Contributors" },
 ]
-keywords = ["streaming", "flink", "spark", "data-flow", "real-time", "concurrency"]
+keywords = ["streaming", "data-flow", "real-time", "windowing", "watermark", "stateful"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -28,14 +28,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-flink = ["apache-flink>=1.18.0"]
-spark = ["pyspark>=3.4.0"]
 kafka = ["kafka-python>=2.0.2"]
-all = [
-    "apache-flink>=1.18.0",
-    "pyspark>=3.4.0",
-    "kafka-python>=2.0.2",
-]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

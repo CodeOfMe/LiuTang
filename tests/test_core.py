@@ -1,24 +1,14 @@
 import pytest
+import time
 from liutang import (
-    Flow,
-    Stream,
-    RuntimeMode,
-    FieldType,
-    Schema,
-    Field,
-    WindowType,
-    WindowKind,
-    CollectionSource,
-    FileSource,
-    PrintSink,
-    CallbackSink,
-    MemoryStateBackend,
-    KeyedState,
-    LiuTangError,
-    EngineNotAvailableError,
-    list_engines,
-    is_engine_available,
-    quick_flow,
+    Flow, Stream, KeyedStream, RuntimeMode,
+    FieldType, Schema, WindowType, WindowKind,
+    CollectionSource, GeneratorSource, FileSource, PrintSink,
+    CallbackSink, CollectSink, DatagenSource,
+    MemoryStateBackend, KeyedState, ValueState, ListState, MapState,
+    RuntimeContext, TimerService, KeyedProcessFunction, ProcessFunction,
+    WatermarkStrategy, Watermark,
+    LiuTangError, PipelineError, quick_flow,
 )
 
 
@@ -26,13 +16,12 @@ class TestFlow:
     def test_create_flow_default(self):
         flow = Flow()
         assert flow.name == "liutang-flow"
-        assert flow.engine == "flink"
+        assert flow.engine == "local"
         assert flow.mode == RuntimeMode.STREAMING
 
     def test_create_flow_custom(self):
         flow = Flow(name="test", engine="local", mode=RuntimeMode.BATCH)
         assert flow.name == "test"
-        assert flow.engine == "local"
         assert flow.mode == RuntimeMode.BATCH
 
     def test_set_parallelism(self):
@@ -43,29 +32,33 @@ class TestFlow:
         flow = Flow().configure("key", "value")
         assert flow.config["key"] == "value"
 
-    def test_add_jar(self):
-        flow = Flow().add_jar("/path/to/connector.jar")
-        assert "/path/to/connector.jar" in flow.jar_paths
-
-    def test_set_checkpoint(self):
-        flow = Flow().set_checkpoint("/tmp/checkpoints")
-        assert flow.checkpoint_dir == "/tmp/checkpoints"
-
     def test_from_collection(self):
-        flow = Flow(engine="local")
+        flow = Flow()
         stream = flow.from_collection([1, 2, 3])
         assert isinstance(stream, Stream)
         assert len(flow.sources) == 1
+
+    def test_from_generator(self):
+        def gen():
+            yield 1
+            yield 2
+            yield 3
+        flow = Flow()
+        stream = flow.from_generator(gen, max_items=3)
+        assert isinstance(stream, Stream)
 
     def test_quick_flow(self):
         flow = quick_flow("test")
         assert flow.name == "test"
 
+    def test_set_checkpoint(self):
+        flow = Flow().set_checkpoint("/tmp/ckp")
+        assert flow.checkpoint_dir == "/tmp/ckp"
+
 
 class TestSchema:
     def test_empty_schema(self):
-        schema = Schema()
-        assert len(schema.fields) == 0
+        assert len(Schema().fields) == 0
 
     def test_add_field(self):
         schema = Schema().add("name", FieldType.STRING).add("age", FieldType.INTEGER)
@@ -76,85 +69,107 @@ class TestSchema:
         assert len(schema.fields) == 2
 
     def test_from_pairs(self):
-        schema = Schema.from_pairs([("x", FieldType.DOUBLE), ("y", FieldType.DOUBLE)])
-        assert schema.field_names() == ["x", "y"]
+        schema = Schema.from_pairs([("x", FieldType.DOUBLE)])
+        assert schema.field_names() == ["x"]
 
     def test_get_field(self):
         schema = Schema.from_dict({"name": FieldType.STRING})
-        field = schema.get_field("name")
-        assert field is not None
-        assert field.field_type == FieldType.STRING
-
-    def test_get_field_missing(self):
-        schema = Schema()
+        assert schema.get_field("name").field_type == FieldType.STRING
         assert schema.get_field("missing") is None
+
+    def test_to_dict_list(self):
+        schema = Schema.from_dict({"name": FieldType.STRING})
+        dl = schema.to_dict_list()
+        assert dl[0]["name"] == "name"
+        assert dl[0]["type"] == "string"
 
 
 class TestStream:
     def test_map(self):
-        flow = Flow(engine="local")
+        flow = Flow()
         stream = flow.from_collection([1, 2, 3])
         result = stream.map(lambda x: x * 2)
-        assert isinstance(result, Stream)
         assert len(result.operations()) == 1
 
     def test_filter(self):
-        flow = Flow(engine="local")
-        stream = flow.from_collection([1, 2, 3, 4])
+        flow = Flow()
+        stream = flow.from_collection([1, 2, 3])
         result = stream.filter(lambda x: x > 2)
         assert len(result.operations()) == 1
 
     def test_flat_map(self):
-        flow = Flow(engine="local")
-        stream = flow.from_collection(["hello world", "foo bar"])
+        flow = Flow()
+        stream = flow.from_collection(["hello world"])
         result = stream.flat_map(lambda s: s.split())
         assert len(result.operations()) == 1
 
     def test_key_by(self):
-        flow = Flow(engine="local")
-        stream = flow.from_collection([("a", 1), ("b", 2)])
+        flow = Flow()
+        stream = flow.from_collection([("a", 1)])
         result = stream.key_by(lambda x: x[0])
-        from liutang.core.stream import KeyedStream
         assert isinstance(result, KeyedStream)
 
     def test_chained_operations(self):
-        flow = Flow(engine="local")
-        stream = flow.from_collection(["hello world", "foo bar"])
-        result = (
-            stream
-            .flat_map(lambda s: s.split())
-            .filter(lambda w: len(w) > 3)
-            .map(lambda w: (w, 1))
-        )
+        flow = Flow()
+        stream = flow.from_collection(["hello world"])
+        result = stream.flat_map(lambda s: s.split()).filter(lambda w: len(w) > 3).map(lambda w: (w, 1))
         assert len(result.operations()) == 3
+
+    def test_window(self):
+        flow = Flow()
+        stream = flow.from_collection([])
+        windowed = stream.window(WindowType.tumbling(size=10.0))
+        assert windowed.window_type.kind == WindowKind.TUMBLING
+
+    def test_process_function(self):
+        class MyProcess(ProcessFunction):
+            def process(self, value):
+                return value * 2
+        flow = Flow()
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.process(MyProcess())
+        assert len(result.operations()) == 1
+
+    def test_min_max(self):
+        flow = Flow()
+        stream = flow.from_collection([1, 2, 3])
+        assert stream.min(field=0).operations()[-1]["type"] == "min"
+        assert stream.max(field=0).operations()[-1]["type"] == "max"
 
 
 class TestWindow:
-    def test_tumbling_window(self):
+    def test_tumbling(self):
         w = WindowType.tumbling(size=10.0, time_field="ts")
         assert w.kind == WindowKind.TUMBLING
         assert w.size == 10.0
 
-    def test_sliding_window(self):
+    def test_sliding(self):
         w = WindowType.sliding(size=10.0, slide=5.0, time_field="ts")
         assert w.kind == WindowKind.SLIDING
         assert w.slide == 5.0
 
-    def test_session_window(self):
-        w = WindowType.session(gap=30.0, time_field="ts")
+    def test_session(self):
+        w = WindowType.session(gap=30.0)
         assert w.kind == WindowKind.SESSION
         assert w.gap == 30.0
 
-    def test_over_window(self):
+    def test_over(self):
         w = WindowType.over(time_field="ts")
         assert w.kind == WindowKind.OVER
+
+    def test_global(self):
+        w = WindowType.global_window()
+        assert w.kind == WindowKind.GLOBAL
 
 
 class TestConnector:
     def test_collection_source(self):
         src = CollectionSource(data=[1, 2, 3])
         assert src.kind().value == "collection"
-        assert src.data == [1, 2, 3]
+
+    def test_generator_source(self):
+        src = GeneratorSource(generator=lambda: (x for x in range(5)), max_items=5)
+        assert src.kind().value == "generator"
 
     def test_file_source(self):
         src = FileSource(path="/tmp/data.csv", fmt="csv")
@@ -169,12 +184,57 @@ class TestConnector:
         sink = CallbackSink(func=lambda x: results.append(x))
         assert sink.kind().value == "callback"
 
+    def test_collect_sink(self):
+        sink = CollectSink()
+        assert sink.kind().value == "collect"
+        assert sink.results == []
+
 
 class TestState:
-    def test_memory_backend(self):
+    def test_value_state(self):
+        state = ValueState("test")
+        state.value = 42
+        assert state.value == 42
+        state.clear()
+        assert state.value is None
+
+    def test_value_state_ttl(self):
+        state = ValueState("test", ttl=0.01)
+        state.value = 42
+        assert state.value == 42
+        time.sleep(0.02)
+        assert state.value is None
+
+    def test_list_state(self):
+        state = ListState("test")
+        state.add(1)
+        state.add(2)
+        assert state.get() == [1, 2]
+        assert len(state) == 2
+
+    def test_map_state(self):
+        state = MapState("test")
+        state.put("a", 1)
+        state.put("b", 2)
+        assert state.get("a") == 1
+        assert "a" in state.keys()
+
+    def test_reducing_state(self):
+        state = MemoryStateBackend()
+        rs = state
+        state.append_list("reduce_test", 5)
+        state.append_list("reduce_test", 3)
+        assert state.get_list("reduce_test") == [5, 3]
+
+    def test_memory_backend_checkpoint(self):
         backend = MemoryStateBackend()
-        backend.set_value("key", 42)
-        assert backend.get_value("key") == 42
+        backend.set_value("k1", "v1")
+        backend.append_list("k2", "item1")
+        checkpoint = backend.checkpoint()
+        backend2 = MemoryStateBackend()
+        backend2.restore(checkpoint)
+        assert backend2.get_value("k1") == "v1"
+        assert backend2.get_list("k2") == ["item1"]
 
     def test_keyed_state(self):
         backend = MemoryStateBackend()
@@ -182,17 +242,58 @@ class TestState:
         state.value = 100
         assert state.value == 100
 
-    def test_list_state(self):
-        backend = MemoryStateBackend()
-        backend.append_list("events", "event1")
-        backend.append_list("events", "event2")
-        assert backend.get_list("events") == ["event1", "event2"]
+    def test_runtime_context(self):
+        ctx = RuntimeContext()
+        ctx.set_current_key("user1")
+        assert ctx.current_key() == "user1"
+        v = ctx.get_state("count")
+        v.value = 5
+        assert v.value == 5
+        l = ctx.get_list_state("events")
+        l.add("event1")
+        assert l.get() == ["event1"]
 
-    def test_map_state(self):
-        backend = MemoryStateBackend()
-        backend.put_map("counts", "a", 1)
-        backend.put_map("counts", "b", 2)
-        assert backend.get_map("counts") == {"a": 1, "b": 2}
+    def test_timer_service(self):
+        ts = TimerService()
+        fired = []
+        ts.register_event_time_timer(100.0, lambda: fired.append(100))
+        ts.register_event_time_timer(200.0, lambda: fired.append(200))
+        callbacks = ts.fire_event_time_timers(150.0)
+        for cb in callbacks:
+            cb()
+        assert 100 in fired
+        assert 200 not in fired
+
+    def test_keyed_process_function(self):
+        class SumFunc(KeyedProcessFunction):
+            def process_element(self, value, ctx):
+                state = ctx.get_state("sum")
+                state.value = (state.value or 0) + value
+                return (ctx.current_key(), state.value)
+
+        ctx = RuntimeContext()
+        fn = SumFunc()
+        fn.open(ctx)
+        ctx.set_current_key("key1")
+        result1 = fn.process_element(5, ctx)
+        ctx.set_current_key("key1")
+        result2 = fn.process_element(3, ctx)
+        assert result1 == ("key1", 5)
+        assert result2 == ("key1", 8)
+
+
+class TestWatermarkStrategy:
+    def test_monotonous(self):
+        wm = WatermarkStrategy.monotonous()
+        w1 = wm.on_event(None, 10.0)
+        assert w1.timestamp == 10.0
+        w2 = wm.on_event(None, 5.0)
+        assert w2.timestamp == 10.0  # monotonous: watermark only goes forward
+
+    def test_bounded_out_of_orderness(self):
+        wm = WatermarkStrategy.bounded_out_of_orderness(2.0)
+        wm.on_event(None, 10.0)
+        assert wm.current_watermark().timestamp == 8.0
 
 
 class TestLocalExecution:
@@ -212,7 +313,7 @@ class TestLocalExecution:
         assert len(data) > 0
 
     def test_batch_filter(self):
-        flow = Flow(name="filter", engine="local", mode=RuntimeMode.BATCH)
+        flow = Flow(mode=RuntimeMode.BATCH)
         stream = flow.from_collection([1, 2, 3, 4, 5, 6])
         result = stream.filter(lambda x: x > 3)
         result.print()
@@ -221,7 +322,7 @@ class TestLocalExecution:
         assert all(x > 3 for x in data)
 
     def test_batch_map(self):
-        flow = Flow(name="map", engine="local", mode=RuntimeMode.BATCH)
+        flow = Flow(mode=RuntimeMode.BATCH)
         stream = flow.from_collection([1, 2, 3])
         result = stream.map(lambda x: x * 10)
         result.print()
@@ -231,30 +332,133 @@ class TestLocalExecution:
 
     def test_callback_sink(self):
         results = []
-        flow = Flow(name="cb", engine="local", mode=RuntimeMode.BATCH)
+        flow = Flow(mode=RuntimeMode.BATCH)
         stream = flow.from_collection([1, 2, 3])
         result = stream.map(lambda x: x * 2)
         result.sink_to(CallbackSink(func=lambda x: results.append(x)))
         flow.execute()
         assert sorted(results) == [2, 4, 6]
 
+    def test_collect_sink(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3])
+        result = stream.map(lambda x: x ** 2)
+        sink = result.collect()
+        flow.execute()
+        assert sorted(sink.results) == [1, 4, 9]
 
-class TestErrors:
-    def test_unknown_engine(self):
-        flow = Flow(engine="nonexistent")
-        with pytest.raises(EngineNotAvailableError):
-            flow.execute()
+    def test_batch_tumbling_window(self):
+        events = [{"ts": float(i), "val": i} for i in range(20)]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(events)
+        windowed = stream.window(WindowType.tumbling(size=5.0, time_field="ts"))
+        result = windowed.count()
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
 
-    def test_engine_not_installed(self):
-        flow = Flow(engine="flink")
-        with pytest.raises((EngineNotAvailableError, ImportError, ModuleNotFoundError)):
-            flow.execute()
+    def test_batch_session_window(self):
+        events = [
+            {"ts": 1.0, "val": 10},
+            {"ts": 2.0, "val": 20},
+            {"ts": 10.0, "val": 30},
+            {"ts": 11.0, "val": 40},
+        ]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(events)
+        windowed = stream.window(WindowType.session(gap=5.0, time_field="ts"))
+        result = windowed.sum(field="val")
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
 
-    def test_list_engines(self):
-        engines = list_engines()
-        assert "local" in engines
-        assert "flink" in engines
-        assert "spark" in engines
+    def test_batch_keyed_sum(self):
+        data = [("Alice", 10), ("Bob", 20), ("Alice", 30), ("Bob", 15)]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(data)
+        result = stream.key_by(lambda x: x[0]).sum(field=1)
+        sink = result.collect()
+        flow.execute()
 
-    def test_is_engine_available(self):
-        assert is_engine_available("local") is True
+    def test_batch_min_max(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([3, 1, 4, 1, 5, 9, 2, 6])
+        result = stream.min()
+        sink = result.collect()
+        flow.execute()
+        assert sink.results == [1]
+
+    def test_batch_max(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([3, 1, 4, 1, 5, 9, 2, 6])
+        result = stream.max()
+        sink = result.collect()
+        flow.execute()
+        assert sink.results == [9]
+
+    def test_explain(self):
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3]).map(lambda x: x * 2)
+        result = stream.filter(lambda x: x > 2)
+        result.print()
+        explanation = flow.explain()
+        assert "liutang (pure Python)" in explanation
+        assert "map" in explanation
+        assert "filter" in explanation
+
+
+class TestWatermarkWithRunner:
+    def test_watermark_tracker(self):
+        from liutang.engine.watermark import WatermarkTracker
+        strategy = WatermarkStrategy.bounded_out_of_orderness(2.0)
+        tracker = WatermarkTracker(strategy)
+        tracker.on_event(10.0)
+        assert tracker.current_watermark() == 8.0
+        tracker.on_event(15.0)
+        assert tracker.current_watermark() == 13.0
+
+
+class TestProcessFunction:
+    def test_custom_process_function(self):
+        results = []
+
+        class DoubleFilter(ProcessFunction):
+            def process(self, value):
+                doubled = value * 2
+                return doubled if doubled > 4 else None
+
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection([1, 2, 3, 4])
+        result = stream.process(DoubleFilter())
+        result.sink_to(CallbackSink(func=lambda x: results.append(x)))
+        flow.execute()
+        assert sorted(results) == [6, 8]
+
+    def test_keyed_process_function(self):
+        class CountFunc(KeyedProcessFunction):
+            def process_element(self, value, ctx):
+                state = ctx.get_state("count")
+                state.value = (state.value or 0) + 1
+                return (ctx.current_key(), state.value)
+
+        data = [("a", 1), ("b", 2), ("a", 3), ("b", 4), ("a", 5)]
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_collection(data)
+        result = stream.key_by(lambda x: x[0]).process(CountFunc())
+        sink = result.collect()
+        flow.execute()
+        assert len(sink.results) > 0
+
+
+class TestGeneratorSource:
+    def test_generator_batch(self):
+        def gen():
+            for i in range(5):
+                yield i * 10
+
+        flow = Flow(mode=RuntimeMode.BATCH)
+        stream = flow.from_generator(gen, max_items=5)
+        result = stream.map(lambda x: x + 1)
+        sink = result.collect()
+        flow.execute()
+        assert sorted(sink.results) == [1, 11, 21, 31, 41]

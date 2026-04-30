@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from liutang.core.schema import Schema
 from liutang.core.errors import PipelineError
+from liutang.core.state import KeyedProcessFunction, ProcessFunction, RuntimeContext, WatermarkStrategy
 
 
 class RuntimeMode(Enum):
@@ -18,6 +19,7 @@ class Stream:
         self._id = stream_id
         self._schema = schema
         self._operations: List[Dict[str, Any]] = []
+        self._watermark_strategy: Optional[WatermarkStrategy] = None
 
     @property
     def flow(self) -> "Flow":
@@ -32,62 +34,56 @@ class Stream:
         return self._schema
 
     def map(self, func: Callable, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "map", "func": func,
-            "name": name or f"map_{len(self._operations)}",
-        })
+        self._operations.append({"type": "map", "func": func, "name": name or f"map_{len(self._operations)}"})
         return self
 
     def flat_map(self, func: Callable, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "flat_map", "func": func,
-            "name": name or f"flat_map_{len(self._operations)}",
-        })
+        self._operations.append({"type": "flat_map", "func": func, "name": name or f"flat_map_{len(self._operations)}"})
         return self
 
     def filter(self, predicate: Callable, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "filter", "func": predicate,
-            "name": name or f"filter_{len(self._operations)}",
-        })
+        self._operations.append({"type": "filter", "func": predicate, "name": name or f"filter_{len(self._operations)}"})
         return self
 
     def key_by(self, key_selector: Union[str, Callable], name: Optional[str] = None) -> "KeyedStream":
-        self._operations.append({
-            "type": "key_by", "func": key_selector,
-            "name": name or f"key_by_{len(self._operations)}",
-        })
+        self._operations.append({"type": "key_by", "func": key_selector, "name": name or f"key_by_{len(self._operations)}"})
         return KeyedStream(self, key_selector)
 
     def reduce(self, func: Callable, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "reduce", "func": func,
-            "name": name or f"reduce_{len(self._operations)}",
-        })
+        self._operations.append({"type": "reduce", "func": func, "name": name or f"reduce_{len(self._operations)}"})
         return self
 
     def sum(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "sum", "field": field,
-            "name": name or f"sum_{len(self._operations)}",
-        })
+        self._operations.append({"type": "sum", "field": field, "name": name or f"sum_{len(self._operations)}"})
         return self
 
     def count(self, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "count",
-            "name": name or f"count_{len(self._operations)}",
-        })
+        self._operations.append({"type": "count", "name": name or f"count_{len(self._operations)}"})
+        return self
+
+    def min(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "min", "field": field, "name": name or f"min_{len(self._operations)}"})
+        return self
+
+    def max(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "max", "field": field, "name": name or f"max_{len(self._operations)}"})
         return self
 
     def window(self, window_type: "WindowType") -> "WindowedStream":
         return WindowedStream(self, window_type)
 
-    def process(self, func: Callable, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "process", "func": func,
-            "name": name or f"process_{len(self._operations)}",
-        })
+    def process(self, func: Union[Callable, ProcessFunction], name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "process", "func": func, "name": name or f"process_{len(self._operations)}"})
+        return self
+
+    def assign_timestamps(self, extractor: Callable, watermark_strategy: Optional[WatermarkStrategy] = None) -> "Stream":
+        self._watermark_strategy = watermark_strategy or WatermarkStrategy.monotonous()
+        self._operations.append({"type": "assign_timestamps", "func": extractor, "watermark": self._watermark_strategy,
+                                 "name": f"timestamps_{len(self._operations)}"})
+        return self
+
+    def watermark(self, strategy: WatermarkStrategy) -> "Stream":
+        self._watermark_strategy = strategy
         return self
 
     def to_table(self, schema: Optional[Schema] = None, name: Optional[str] = None) -> "TableStream":
@@ -98,6 +94,12 @@ class Stream:
 
     def sink_to(self, connector: "SinkConnector") -> None:
         self._flow._add_sink(self, connector)
+
+    def collect(self) -> "CollectSink":
+        from liutang.core.connector import CollectSink
+        sink = CollectSink()
+        self._flow._add_sink(self, sink)
+        return sink
 
     def print(self) -> None:
         self._flow._add_print_sink(self)
@@ -117,6 +119,22 @@ class KeyedStream(Stream):
     def key_selector(self) -> Union[str, Callable]:
         return self._key_selector
 
+    def process(self, func: Union[Callable, KeyedProcessFunction], name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "keyed_process", "func": func, "name": name or f"keyed_process_{len(self._operations)}"})
+        return self
+
+    def reduce(self, func: Callable, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "keyed_reduce", "func": func, "name": name or f"reduce_{len(self._operations)}"})
+        return self
+
+    def sum(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "keyed_sum", "field": field, "name": name or f"sum_{len(self._operations)}"})
+        return self
+
+    def count(self, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "keyed_count", "name": name or f"count_{len(self._operations)}"})
+        return self
+
 
 class WindowedStream(Stream):
     def __init__(self, parent: Stream, window_type: "WindowType"):
@@ -130,24 +148,33 @@ class WindowedStream(Stream):
         return self._window_type
 
     def aggregate(self, func: Callable, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "window_aggregate", "func": func, "window": self._window_type,
-            "name": name or f"aggregate_{len(self._operations)}",
-        })
+        self._operations.append({"type": "window_aggregate", "func": func, "window": self._window_type,
+                                  "name": name or f"aggregate_{len(self._operations)}"})
         return self
 
     def sum(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "window_sum", "field": field, "window": self._window_type,
-            "name": name or f"sum_{len(self._operations)}",
-        })
+        self._operations.append({"type": "window_sum", "field": field, "window": self._window_type,
+                                  "name": name or f"sum_{len(self._operations)}"})
         return self
 
     def count(self, name: Optional[str] = None) -> "Stream":
-        self._operations.append({
-            "type": "window_count", "window": self._window_type,
-            "name": name or f"count_{len(self._operations)}",
-        })
+        self._operations.append({"type": "window_count", "window": self._window_type,
+                                  "name": name or f"count_{len(self._operations)}"})
+        return self
+
+    def min(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "window_min", "field": field, "window": self._window_type,
+                                  "name": name or f"min_{len(self._operations)}"})
+        return self
+
+    def max(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "window_max", "field": field, "window": self._window_type,
+                                  "name": name or f"max_{len(self._operations)}"})
+        return self
+
+    def apply(self, func: Callable, name: Optional[str] = None) -> "Stream":
+        self._operations.append({"type": "window_apply", "func": func, "window": self._window_type,
+                                  "name": name or f"apply_{len(self._operations)}"})
         return self
 
 
@@ -190,6 +217,14 @@ class TableStream:
     def window(self, window_type: "WindowType") -> "WindowedTable":
         return WindowedTable(self, window_type)
 
+    def order_by(self, *keys: Any) -> "TableStream":
+        self._operations.append({"type": "order_by", "keys": keys})
+        return self
+
+    def limit(self, n: int) -> "TableStream":
+        self._operations.append({"type": "limit", "n": n})
+        return self
+
     def insert_into(self, connector: "SinkConnector") -> None:
         self._flow._add_table_sink(self, connector)
 
@@ -200,9 +235,19 @@ class GroupedTable:
         self._keys = keys
 
     def select(self, *expressions: Any) -> "TableStream":
-        self._parent._operations.append({
-            "type": "grouped_select", "expressions": expressions
-        })
+        self._parent._operations.append({"type": "grouped_select", "expressions": expressions})
+        return self._parent
+
+    def count(self, name: Optional[str] = None) -> "TableStream":
+        self._parent._operations.append({"type": "grouped_count", "name": name or "count"})
+        return self._parent
+
+    def sum(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "TableStream":
+        self._parent._operations.append({"type": "grouped_sum", "field": field, "name": name or f"sum_{field}"})
+        return self._parent
+
+    def avg(self, field: Union[str, int] = 0, name: Optional[str] = None) -> "TableStream":
+        self._parent._operations.append({"type": "grouped_avg", "field": field, "name": name or f"avg_{field}"})
         return self._parent
 
 
@@ -215,10 +260,7 @@ class WindowedTable:
         return self._parent.group_by(*keys)
 
     def select(self, *expressions: Any) -> "TableStream":
-        self._parent._operations.append({
-            "type": "windowed_select", "window": self._window_type,
-            "expressions": expressions,
-        })
+        self._parent._operations.append({"type": "windowed_select", "window": self._window_type, "expressions": expressions})
         return self._parent
 
 

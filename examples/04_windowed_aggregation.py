@@ -1,12 +1,8 @@
 """
-Example: Windowed Aggregation with liutang (流淌)
-
-Demonstrates tumbling and session windows using the local engine,
-similar to PyFlink-Tutorial window examples.
+Example: Windowed Aggregation - Pure Python streaming windows
 """
 import liutang
 import random
-import time
 
 
 def main():
@@ -19,19 +15,18 @@ def main():
             "ts": base_ts + i * 2.0,
         })
 
-    flow = liutang.Flow(name="windowed-aggregation", engine="local", mode=liutang.RuntimeMode.BATCH)
-    flow.set_parallelism(1)
-
+    flow = liutang.Flow(name="window-agg", mode=liutang.RuntimeMode.BATCH)
     stream = flow.from_collection(events)
     windowed = stream.window(liutang.WindowType.tumbling(size=10.0, time_field="ts"))
     result = windowed.sum(field="amount", name="sum_per_window")
-    result.print()
+    sink = result.collect()
 
-    results = flow.execute()
-    print("\n--- Tumbling Window Sum (10s) ---")
-    for source_id, data in results.items():
-        for item in data:
-            print(f"  {item}")
+    flow.execute()
+    print("\n--- Tumbling Window Sum ---")
+    for item in sink.results:
+        print(f"  {item}")
+
+    print(f"\nTotal windows: {len(sink.results)}")
 
 
 if __name__ == "__main__":

@@ -1,12 +1,15 @@
 """
-liutang (流淌) - A unified streaming data framework with native Python concurrency,
-optional Apache Flink and Spark backends.
+liutang (流淌) — A pure-Python streaming data framework.
+
+No external dependencies. All stream processing features (windowing, watermark,
+stateful processing, checkpointing) are implemented natively with threading/
+multiprocessing for parallelism. Switch between batch and streaming mode freely.
 
 Design principles:
-  - Zero hard dependencies: Flink/Spark are lazy-imported, never required at install
-  - Native concurrency: local engine uses threading/multiprocessing/asyncio
-  - API parity: same Flow/Stream API works across local, Flink, and Spark engines
-  - Version isolation: engine adapters catch version mismatches with clear messages
+  - Zero dependencies: just Python stdlib
+  - Native concurrency: threading / multiprocessing / concurrent.futures
+  - Full streaming: watermark, event-time windows, keyed state, timers
+  - API parity: same Flow/Stream API for batch and streaming
 """
 
 __version__ = "0.1.0"
@@ -27,6 +30,7 @@ from liutang.core.connector import (
     SourceConnector,
     SinkConnector,
     CollectionSource,
+    GeneratorSource,
     FileSource,
     KafkaSource,
     DatagenSource,
@@ -35,23 +39,38 @@ from liutang.core.connector import (
     FileSink,
     KafkaSink,
     CallbackSink,
+    CollectSink,
+    SocketSink,
     SourceKind,
     SinkKind,
 )
-from liutang.core.state import MemoryStateBackend, KeyedState, StateConfig
+from liutang.core.state import (
+    ValueState,
+    ListState,
+    MapState,
+    ReducingState,
+    AggregatingState,
+    KeyedState,
+    RuntimeContext,
+    TimerService,
+    KeyedProcessFunction,
+    ProcessFunction,
+    WatermarkStrategy,
+    Watermark,
+    MemoryStateBackend,
+    StateConfig,
+)
 from liutang.core.errors import (
     LiuTangError,
-    EngineNotAvailableError,
-    EngineVersionError,
-    SchemaError,
     PipelineError,
+    SchemaError,
     ConnectorError,
-    SerializationError,
+    WatermarkError,
+    StateError,
 )
-from liutang.engine.registry import list_engines, is_engine_available
 
 
-def quick_flow(name: str = "liutang-quick", **kwargs: object) -> Flow:
+def quick_flow(name: str = "liutang-quick", **kwargs) -> Flow:
     return Flow(name=name, **kwargs)
 
 
@@ -70,6 +89,7 @@ __all__ = [
     "WindowType",
     "WindowKind",
     "CollectionSource",
+    "GeneratorSource",
     "FileSource",
     "KafkaSource",
     "DatagenSource",
@@ -78,19 +98,29 @@ __all__ = [
     "FileSink",
     "KafkaSink",
     "CallbackSink",
+    "CollectSink",
+    "SocketSink",
     "SourceKind",
     "SinkKind",
-    "MemoryStateBackend",
+    "ValueState",
+    "ListState",
+    "MapState",
+    "ReducingState",
+    "AggregatingState",
     "KeyedState",
+    "RuntimeContext",
+    "TimerService",
+    "KeyedProcessFunction",
+    "ProcessFunction",
+    "WatermarkStrategy",
+    "Watermark",
+    "MemoryStateBackend",
     "StateConfig",
     "LiuTangError",
-    "EngineNotAvailableError",
-    "EngineVersionError",
-    "SchemaError",
     "PipelineError",
+    "SchemaError",
     "ConnectorError",
-    "SerializationError",
-    "list_engines",
-    "is_engine_available",
+    "WatermarkError",
+    "StateError",
     "quick_flow",
 ]

@@ -49,6 +49,12 @@ class Schema:
                 return f
         return None
 
+    def column_count(self) -> int:
+        return len(self.fields)
+
+    def to_dict_list(self) -> List[Dict[str, str]]:
+        return [{"name": f.name, "type": f.field_type.value, "nullable": f.nullable} for f in self.fields]
+
     @classmethod
     def from_dict(cls, spec: Dict[str, FieldType]) -> "Schema":
         return cls(fields=[Field(name=n, field_type=t) for n, t in spec.items()])

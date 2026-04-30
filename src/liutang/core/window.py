@@ -9,6 +9,7 @@ class WindowKind(Enum):
     SLIDING = "sliding"
     SESSION = "session"
     OVER = "over"
+    GLOBAL = "global"
 
 
 class WindowType:
@@ -17,6 +18,7 @@ class WindowType:
     slide: Any
     gap: Any
     time_field: Optional[str]
+    allowed_lateness: float
 
     def __init__(
         self,
@@ -25,20 +27,22 @@ class WindowType:
         slide: Any = None,
         gap: Any = None,
         time_field: Optional[str] = None,
+        allowed_lateness: float = 0.0,
     ):
         self.kind = kind
         self.size = size
         self.slide = slide
         self.gap = gap
         self.time_field = time_field
+        self.allowed_lateness = allowed_lateness
 
     @staticmethod
-    def tumbling(size: Any, time_field: Optional[str] = None) -> "WindowType":
-        return WindowType(WindowKind.TUMBLING, size=size, time_field=time_field)
+    def tumbling(size: Any, time_field: Optional[str] = None, allowed_lateness: float = 0.0) -> "WindowType":
+        return WindowType(WindowKind.TUMBLING, size=size, time_field=time_field, allowed_lateness=allowed_lateness)
 
     @staticmethod
-    def sliding(size: Any, slide: Any, time_field: Optional[str] = None) -> "WindowType":
-        return WindowType(WindowKind.SLIDING, size=size, slide=slide, time_field=time_field)
+    def sliding(size: Any, slide: Any, time_field: Optional[str] = None, allowed_lateness: float = 0.0) -> "WindowType":
+        return WindowType(WindowKind.SLIDING, size=size, slide=slide, time_field=time_field, allowed_lateness=allowed_lateness)
 
     @staticmethod
     def session(gap: Any, time_field: Optional[str] = None) -> "WindowType":
@@ -47,6 +51,10 @@ class WindowType:
     @staticmethod
     def over(time_field: Optional[str] = None) -> "WindowType":
         return WindowType(WindowKind.OVER, time_field=time_field)
+
+    @staticmethod
+    def global_window() -> "WindowType":
+        return WindowType(WindowKind.GLOBAL)
 
     def __repr__(self) -> str:
         parts = [f"{self.kind.value}"]
@@ -58,4 +66,6 @@ class WindowType:
             parts.append(f"gap={self.gap}")
         if self.time_field:
             parts.append(f"on={self.time_field}")
+        if self.allowed_lateness:
+            parts.append(f"lateness={self.allowed_lateness}")
         return f"WindowType({' '.join(parts)})"
