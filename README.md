@@ -10,7 +10,7 @@ A pure-Python streaming data framework with native concurrency, watermark, windo
 - **Native concurrency** — local engine uses `threading` / `multiprocessing` / `concurrent.futures`
 - **Full streaming** — Watermark, event-time windows, keyed state, timers, checkpointing, switchable delivery semantics — all pure Python
 - **Unified API** — Same `Flow` / `Stream` API for batch and streaming modes
-- **Architecture fusion** — Lambda (batch+speed), Kappa (log+replay), and Adaptive (granularity-tunable) modes with one API
+- **Architecture fusion** — Lambda (batch+speed), Kappa (log+replay), and Adaptive (viscosity-controllable) modes with one API
 
 ## Quick Start
 
@@ -178,45 +178,76 @@ lf = flow.as_lambda()   # Flow -> LambdaFlow
 kf = flow.as_kappa(event_log_path="/data/events.log")  # Flow -> KappaFlow
 ```
 
-### Adaptive Granularity Architecture
+### Viscosity-Controllable Adaptive Architecture
 
-Continuously adjustable granularity from micro-streaming to macro-batch, controlled by real-time metrics.
+Data flows like fluid; viscosity η ∈ [0,1] controls how thick or thin the flow runs. Low η → thin & fast (streaming); high η → thick & slow (batch). The runtime adjusts η in real time based on throughput/latency signals.
 
 ```python
-# Adaptive: auto-adjust granularity based on throughput/latency
+# Adaptive: auto-adjust viscosity based on throughput/latency
 af = liutang.AdaptiveFlow(
     name="adaptive-pipeline",
     stream_fn=lambda f: f.from_collection(data).map(transform),
-    policy=liutang.GranularityPolicy.BALANCED,
-    initial_granularity=liutang.GranularityLevel.MEDIUM,
+    policy=liutang.ViscosityPolicy.BALANCED,
+    initial_viscosity=liutang.Viscosity.HONEYED,
 )
 
-# Execute at current granularity
+# Execute at current viscosity
 result = af.execute()
 
-# Or explicitly set granularity level
-af.set_granularity(liutang.GranularityLevel.MICRO)   # pure streaming (batch_size=1)
-af.set_granularity(liutang.GranularityLevel.MACRO)   # near-batch (batch_size=100000)
+# Or explicitly set viscosity
+af.set_viscosity(liutang.Viscosity.VOLATILE)   # pure streaming (η=0, batch_size=1)
+af.set_viscosity(liutang.Viscosity.FROZEN)     # near-batch (η=1, batch_size=100000)
+
+# Viscosity control verbs
+af.thaw()            # decrease η by one level
+af.freeze()          # increase η by one level
+af.flow_freely()    # set η=0 (VOLATILE) — item-by-item streaming
+af.flow_as_batch()  # set η=1 (FROZEN) — maximal batching
 
 # Quick shortcuts
-result = af.execute_stream_like()  # sets MICRO then executes
-result = af.execute_batch_like()   # sets MACRO then executes
+result = af.execute_stream_like()  # sets VOLATILE then executes
+result = af.execute_batch_like()   # sets FROZEN then executes
+
+# Backward-compatible aliases (GranularityLevel → Viscosity)
+af.set_viscosity(liutang.GranularityLevel.MICRO)    # alias for VOLATILE
+af.set_viscosity(liutang.GranularityLevel.MACRO)    # alias for FROZEN
 ```
 
-**5 Granularity Levels:**
+**5 Viscosity Levels:**
 
-| Level | Batch Size | Timeout | Mode |
-|-------|-----------|---------|------|
-| MICRO | 1 | 10ms | Pure streaming |
-| FINE | 10 | 100ms | Low-latency streaming |
-| MEDIUM | 100 | 500ms | Balanced |
-| COARSE | 1,000 | 2s | High-throughput |
-| MACRO | 100,000 | 10s | Near-batch |
+| Viscosity | η | Character | Batch Size | Timeout |
+|-----------|---|-----------|------------|---------|
+| VOLATILE  | 0.00 | 如水 (water) | 1 | 10ms |
+| FLUID     | 0.25 | 如溪 (stream) | 10 | 100ms |
+| HONEYED   | 0.50 | 如蜜 (honey) | 100 | 500ms |
+| SLUGGISH  | 0.75 | 如泥 (mud) | 1,000 | 2s |
+| FROZEN    | 1.00 | 如冰 (ice) | 100,000 | 10s |
 
-**3 Adjustment Policies:**
-- `THROUGHPUT` — favors larger batches when data volume is high
-- `LATENCY` — favors smaller batches when latency must be low
-- `BALANCED` — adjusts based on combined throughput + latency signals
+**4 Viscosity Policies:**
+- `RESPONSIVE` — favors lower η when latency must be low (analogous to LATENCY)
+- `EFFICIENT` — favors higher η when throughput is priority (analogous to THROUGHPUT)
+- `BALANCED` — adjusts η based on combined throughput + latency signals
+- `MANUAL` — disables auto-adjust, η stays at user-set value
+
+**Fluid Dynamics Metrics:**
+
+```python
+# Observe real-time viscosity metrics
+metrics = af.viscosity_metrics()
+metrics.shear_rate       # rate of throughput change (records/s²)
+metrics.shear_stress     # backpressure from slow operators
+metrics.measured_viscosity  # current η as measured by the runtime
+```
+
+> **Backward compatibility:** `GranularityLevel` and `GranularityPolicy` are retained as aliases:
+> - `GranularityLevel.MICRO` → `Viscosity.VOLATILE`
+> - `GranularityLevel.FINE` → `Viscosity.FLUID`
+> - `GranularityLevel.MEDIUM` → `Viscosity.HONEYED`
+> - `GranularityLevel.COARSE` → `Viscosity.SLUGGISH`
+> - `GranularityLevel.MACRO` → `Viscosity.FROZEN`
+> - `GranularityPolicy.LATENCY` → `ViscosityPolicy.RESPONSIVE`
+> - `GranularityPolicy.THROUGHPUT` → `ViscosityPolicy.EFFICIENT`
+> - `GranularityController` → `ViscosityController`
 
 ### Sources
 
@@ -295,8 +326,8 @@ liutang/
 │   │   ├── eventlog.py         # EventLog — append-only segmented log
 │   │   ├── serving.py          # ServingView + MergeView (batch/speed merge)
 │   │   ├── lambda_flow.py      # LambdaFlow + KappaFlow
-│   │   ├── granularity.py     # GranularityLevel + GranularityController
-│   │   ├── adaptive_flow.py  # AdaptiveFlow — granularity-tunable architecture
+│   │   ├── viscosity.py       # Viscosity + ViscosityController (GranularityLevel alias)
+│   │   ├── adaptive_flow.py  # AdaptiveFlow — viscosity-controllable architecture
 │   │   ├── errors.py            # Exception hierarchy
 │   │   └── (no external dependencies!)
 │   └── engine/

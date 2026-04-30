@@ -10,7 +10,7 @@
 - **原生并发** — 本地引擎用 `threading` / `multiprocessing` / `concurrent.futures` 实现并行
 - **完整流式** — 窗口、水位线(Watermark)、KeyedState、定时器、Checkpoint、可切换投递语义 — 全部纯 Python 实现
 - **API 统一** — 同一套 `Flow` / `Stream` API 同时支持批处理和流处理
-- **架构融合** — Lambda（批+速）、Kappa（日志+回放）和自适应（颗粒度可调）模式共用一套API
+- **架构融合** — Lambda（批+速）、Kappa（日志+回放）和自适应（粘度可调）模式共用一套API
 
 ## 快速开始
 
@@ -180,45 +180,67 @@ lf = flow.as_lambda()   # Flow -> LambdaFlow
 kf = flow.as_kappa(event_log_path="/data/events.log")  # Flow -> KappaFlow
 ```
 
-### 自适应颗粒度架构
+### 粘度可调自适应架构 (Viscosity-Controllable Adaptive Architecture)
 
-颗粒度可在微流到宏批之间连续调节，由实时指标自动控制。
+数据如流体般流淌；粘度系数 η ∈ [0,1] 控制流的稠度。
 
 ```python
-# 自适应：根据吞吐/延迟自动调节颗粒度
+# 自适应：根据吞吐/延迟自动调节粘度
 af = liutang.AdaptiveFlow(
     name="adaptive-pipeline",
     stream_fn=lambda f: f.from_collection(data).map(transform),
-    policy=liutang.GranularityPolicy.BALANCED,
-    initial_granularity=liutang.GranularityLevel.MEDIUM,
+    policy=liutang.ViscosityPolicy.BALANCED,
+    initial_viscosity=liutang.Viscosity.HONEYED,
 )
 
-# 以当前颗粒度执行
+# 以当前粘度执行
 result = af.execute()
 
-# 或显式设置颗粒度
-af.set_granularity(liutang.GranularityLevel.MICRO)   # 纯流式 (batch_size=1)
-af.set_granularity(liutang.GranularityLevel.MACRO)   # 近批处理 (batch_size=100000)
+# 或显式设置粘度
+af.set_viscosity(liutang.Viscosity.VOLATILE)  # 纯流式 (η=0, batch_size=1)
+af.set_viscosity(liutang.Viscosity.FROZEN)    # 近批处理 (η=1, batch_size=100000)
 
-# 快捷方式
-result = af.execute_stream_like()  # 设置为 MICRO 后执行
-result = af.execute_batch_like()   # 设置为 MACRO 后执行
+# 流体操控 API
+af.thaw()            # 降粘：向更流畅推进一级
+af.freeze()          # 升粘：向更稠密推进一级
+af.flow_freely()     # 流至最稀：设置 VOLATILE 后执行
+af.flow_as_batch()   # 流至最稠：设置 FROZEN 后执行
 ```
 
-**5 级颗粒度：**
+**向后兼容别名：** `GranularityLevel` → `Viscosity`, `GranularityPolicy` → `ViscosityPolicy`, `GranularityController` → `ViscosityController`
 
-| 级别 | 批大小 | 超时 | 模式 |
-|------|--------|------|------|
-| MICRO | 1 | 10ms | 纯流式 |
-| FINE | 10 | 100ms | 低延迟流式 |
-| MEDIUM | 100 | 500ms | 均衡 |
-| COARSE | 1,000 | 2s | 高吞吐 |
-| MACRO | 100,000 | 10s | 近批处理 |
+```python
+# 旧 API 仍可用
+af = liutang.AdaptiveFlow(
+    policy=liutang.GranularityPolicy.BALANCED,           # → ViscosityPolicy.BALANCED
+    initial_granularity=liutang.GranularityLevel.MEDIUM, # → Viscosity.HONEYED
+)
+```
 
-**3 种调节策略：**
-- `THROUGHPUT` — 数据量大时倾向更大批次
-- `LATENCY` — 延迟要求低时倾向更小批次
-- `BALANCED` — 综合吞吐+延迟信号调节
+**5 级粘度：**
+
+| 粘度 (Viscosity) | η | 特性 | 批处理大小 | 超时 |
+|-----------|---|-----------|------------|---------|
+| VOLATILE  | 0.00 | 如水——自由流淌 | 1 | 10ms |
+| FLUID     | 0.25 | 如溪——潺潺细流 | 10 | 100ms |
+| HONEYED   | 0.50 | 如蜜——缓缓流淌 | 100 | 500ms |
+| SLUGGISH  | 0.75 | 如泥——缓慢流动 | 1,000 | 2s |
+| FROZEN     | 1.00 | 如冰——凝固不动 | 100,000 | 10s |
+
+**4 种粘度策略：**
+- `RESPONSIVE` — 响应优先：延迟要求低时倾向更低粘度
+- `EFFICIENT` — 高效优先：数据量大时倾向更高粘度
+- `BALANCED` — 均衡：综合吞吐+延迟信号调节
+- `MANUAL` — 手动：完全由用户控制，不自动调节
+
+#### 流体动力学度量
+
+```python
+metrics = af.viscosity_metrics()
+metrics.shear_rate       # 剪切率 — 数据流速的变化率
+metrics.shear_stress     # 剪切应力 — 系统负载压力
+metrics.measured_viscosity  # 实测粘度 — 剪切应力 / 剪切率
+```
 
 ### 数据源 (Sources)
 
@@ -327,8 +349,8 @@ liutang/
 │   │   ├── eventlog.py          # EventLog — 只追加分段日志
 │   │   ├── serving.py           # ServingView + MergeView (批/速合并)
 │   │   ├── lambda_flow.py       # LambdaFlow + KappaFlow
-│   │   ├── granularity.py     # GranularityLevel + GranularityController
-│   │   ├── adaptive_flow.py  # AdaptiveFlow — 颗粒度可调架构
+│   │   ├── viscosity.py        # Viscosity + ViscosityController(+ GranularityLevel/GranularityController 向后兼容别名)
+│   │   ├── adaptive_flow.py  # AdaptiveFlow — 粘度可调自适应架构
 │   │   ├── errors.py            # 异常层级
 │   │   └── (无外部依赖!)
 │   └── engine/
@@ -350,4 +372,4 @@ GPL-3.0-or-later
 
 详见 [COMPARISON.md](COMPARISON.md) — 与 PyFlink / PySpark / Beam / Bytewax / Faust / Streamz 的全方位对比。
 
-liutang 是唯一原生支持 Lambda、Kappa 和自适应架构的纯 Python 流框架。
+liutang 是唯一原生支持 Lambda、Kappa 和粘度可调自适应架构的纯 Python 流框架。
