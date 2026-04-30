@@ -220,6 +220,14 @@ class TimerService:
     def __init__(self) -> None:
         self._event_time_timers: Dict[float, List[Callable]] = defaultdict(list)
         self._processing_time_timers: Dict[float, List[Callable]] = defaultdict(list)
+        self._current_watermark: float = float("-inf")
+
+    @property
+    def current_watermark(self) -> float:
+        return self._current_watermark
+
+    def advance_watermark(self, timestamp: float) -> None:
+        self._current_watermark = max(self._current_watermark, timestamp)
 
     def register_event_time_timer(self, timestamp: float, callback: Optional[Callable] = None) -> None:
         self._event_time_timers[timestamp].append(callback)

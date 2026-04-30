@@ -298,7 +298,7 @@ class TestWatermarkStrategy:
 
 class TestLocalExecution:
     def test_batch_word_count(self):
-        flow = Flow(name="wc", engine="local", mode=RuntimeMode.BATCH)
+        flow = Flow(name="wc", mode=RuntimeMode.BATCH)
         stream = flow.from_collection(["hello world", "hello liutang"])
         result = (
             stream
@@ -306,11 +306,9 @@ class TestLocalExecution:
             .map(lambda w: (w, 1))
             .key_by(lambda pair: pair[0])
         )
-        result.print()
+        sink = result.collect()
         output = flow.execute()
-        assert "source_0" in output
-        data = output["source_0"]
-        assert len(data) > 0
+        assert len(sink.results) > 0
 
     def test_batch_filter(self):
         flow = Flow(mode=RuntimeMode.BATCH)

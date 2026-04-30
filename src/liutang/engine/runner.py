@@ -239,9 +239,9 @@ class StreamRunner:
                     out = func.process_element(item, self._runtime_context)
                     if out is not None:
                         results.append(out)
-            wm = self._runtime_context.timer_service.current_watermark() if self._runtime_context.timer_service else None
-            if wm is not None:
-                for cb in self._timer_service.fire_event_time_timers(wm.timestamp):
+            wm_timestamp = self._timer_service.current_watermark if self._timer_service else None
+            if wm_timestamp is not None:
+                for cb in self._timer_service.fire_event_time_timers(wm_timestamp):
                     if cb:
                         results.append(cb)
             func.close()
@@ -272,7 +272,10 @@ class StreamRunner:
         for item in data:
             if isinstance(item, tuple) and len(item) == 2:
                 key, value = item
-                grouped[key].append(value)
+                if isinstance(value, list):
+                    grouped[key].extend(value)
+                else:
+                    grouped[key].append(value)
             else:
                 grouped[item].append(item)
         results = []
@@ -340,14 +343,15 @@ class StreamRunner:
         return record
 
     @staticmethod
-    def _extract_timestamp(record: Any, strategy: WatermarkStrategy) -> Optional[float]:
-        if strategy.time_field is None:
+    def _extract_timestamp(record: Any, strategy: Any) -> Optional[float]:
+        if strategy is None or getattr(strategy, 'time_field', None) is None:
             return None
+        time_field = strategy.time_field
         if isinstance(record, dict):
-            return record.get(strategy.time_field)
+            return record.get(time_field)
         if isinstance(record, (list, tuple)):
             return None
-        return getattr(record, strategy.time_field, None)
+        return getattr(record, time_field, None)
 
     def _apply_window_op(self, op: PipelineOp, data: List[Any]) -> List[Any]:
         window = op.kwargs.get("window")
