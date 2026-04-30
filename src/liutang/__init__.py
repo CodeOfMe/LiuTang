@@ -12,7 +12,7 @@ Design principles:
   - API parity: same Flow/Stream API for batch and streaming
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from liutang.core.flow import Flow
 from liutang.core.stream import (

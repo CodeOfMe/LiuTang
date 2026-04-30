@@ -211,3 +211,7 @@ Version is controlled exclusively in `src/liutang/__init__.py`. The publish scri
 ## License
 
 GPL-3.0-or-later
+
+## Full Comparison
+
+See [COMPARISON.md](COMPARISON.md) — comprehensive comparison with PyFlink / PySpark / Beam / Bytewax / Faust / Streamz.

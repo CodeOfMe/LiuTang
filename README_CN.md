@@ -239,3 +239,7 @@ liutang/
 ## License
 
 GPL-3.0-or-later
+
+## 完整对比
+
+详见 [COMPARISON.md](COMPARISON.md) — 与 PyFlink / PySpark / Beam / Bytewax / Faust / Streamz 的全方位对比。
