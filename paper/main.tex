@@ -87,12 +87,12 @@ Based on the gaps identified in the previous section, we establish five design g
 
 LiuTang adopts a four-layer architecture in which the ViscosityController occupies a central position, bridging the operation and execution layers. The API layer captures pipeline definitions through Flow, Stream, KeyedStream, WindowedStream, and TableStream. The operation layer compiles these into typed pipeline operations via PipelineOp and PipelineBuilder. The execution layer runs the compiled operations in batch, streaming, or adaptive mode through an Executor (Batch/Streaming/Adaptive), StreamRunner, WatermarkTracker, DeliveryMode, and the ViscosityController itself. The state layer manages per-key state with TTL and checkpointing through five state primitives and a MemoryStateBackend. The ViscosityController is not a peripheral component but the mechanism through which the execution layer determines how fluidly or sluggishly data should be processed, making viscosity the governing principle of the entire system.
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig-architecture.pdf}
+\includegraphics[width=0.9\textwidth]{fig-architecture.pdf}
 \caption{LiuTang's four-layer architecture with the ViscosityController bridging the operation and execution layers.}
 \label{fig:architecture}
-\end{figure}
+\end{figure*}
 
 \subsection{Pipeline Definition}
 
@@ -225,12 +225,12 @@ where each record belongs to $\lceil s/l \rceil$ windows. The session window cre
 \end{equation}
 where $g$ is the gap threshold and sessions merge when overlapping. The over window provides an aggregate window over all data for cumulative computations, while the global window assigns all records to a single window, typically used with custom triggers. All window types support an \texttt{allowed\_lateness} parameter that determines how long a window retains its state after the watermark passes. Figure~\ref{fig:window-types} illustrates the five window types.
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig-window-types.pdf}
+\includegraphics[width=0.9\textwidth]{fig-window-types.pdf}
 \caption{LiuTang's five window types: tumbling, sliding, session, over, and global.}
 \label{fig:window-types}
-\end{figure}
+\end{figure*}
 
 \subsection{State Management}
 
