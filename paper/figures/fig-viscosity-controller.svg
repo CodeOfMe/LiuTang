@@ -109,7 +109,7 @@
   <line x1="500" y1="382" x2="510" y2="382" stroke="#059669" stroke-width="1.5" marker-end="url(#arrowG2)"/>
 
   <!-- freeze() -->
-  <rect x="675" y="370" width="0" height="0" rx="6" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.2"/>
+  <!-- freeze() removed - not needed for layout -->
 
   <!-- Viscosity outputs -->
   <line x1="540" y1="480" x2="500" y2="480" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrowB2)"/>

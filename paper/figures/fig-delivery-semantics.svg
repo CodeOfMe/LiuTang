@@ -55,11 +55,11 @@
   <!-- Duplicates illustration -->
   <text x="158" y="215" text-anchor="middle" font-size="11" font-weight="600" fill="#475569">Possible Duplicates:</text>
   <rect x="55" y="225" width="50" height="28" rx="5" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
-  <text x="80" y="243" text-anchor="middle" font-size="14" font-weight="700" fill="#D97706">⊕⊕</text>
+  <text x="80" y="243" text-anchor="middle" font-size="14" font-weight="700" fill="#D97706">dup dup</text>
   <rect x="115" y="225" width="50" height="28" rx="5" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
-  <text x="140" y="243" text-anchor="middle" font-size="14" font-weight="700" fill="#D97706">⊕⊕</text>
+  <text x="140" y="243" text-anchor="middle" font-size="14" font-weight="700" fill="#D97706">dup dup</text>
   <rect x="175" y="225" width="50" height="28" rx="5" fill="#DCEDC8" stroke="#66BB6A" stroke-width="1"/>
-  <text x="200" y="243" text-anchor="middle" font-size="14" font-weight="700" fill="#2E7D32">⊕</text>
+  <text x="200" y="243" text-anchor="middle" font-size="14" font-weight="700" fill="#2E7D32">dup</text>
 
   <!-- Description -->
   <text x="158" y="280" text-anchor="middle" font-size="10" fill="#475569">Records are reprocessed on failure</text>
@@ -95,18 +95,18 @@
 
   <!-- Drop indicator -->
   <rect x="465" y="150" width="36" height="36" rx="50%" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.5"/>
-  <text x="483" y="173" text-anchor="middle" font-size="16" font-weight="700" fill="#DC2626">⊘</text>
+  <text x="483" y="173" text-anchor="middle" font-size="16" font-weight="700" fill="#DC2626">drop</text>
   <line x1="482" y1="141" x2="482" y2="150" stroke="#DC2626" stroke-width="1" stroke-dasharray="3,2"/>
   <text x="483" y="202" text-anchor="middle" font-size="8" font-weight="600" fill="#DC2626">error → drop</text>
 
   <!-- Dropped records illustration -->
   <text x="460" y="225" text-anchor="middle" font-size="11" font-weight="600" fill="#475569">Dropped Records:</text>
   <rect x="357" y="235" width="50" height="28" rx="5" fill="#FEE2E2" stroke="#EF4444" stroke-width="1"/>
-  <text x="382" y="253" text-anchor="middle" font-size="14" font-weight="700" fill="#DC2626">⊘</text>
+  <text x="382" y="253" text-anchor="middle" font-size="14" font-weight="700" fill="#DC2626">drop</text>
   <rect x="417" y="235" width="50" height="28" rx="5" fill="#DCEDC8" stroke="#66BB6A" stroke-width="1"/>
-  <text x="442" y="253" text-anchor="middle" font-size="14" font-weight="700" fill="#2E7D32">⊕</text>
+  <text x="442" y="253" text-anchor="middle" font-size="14" font-weight="700" fill="#2E7D32">dup</text>
   <rect x="477" y="235" width="50" height="28" rx="5" fill="#FEE2E2" stroke="#EF4444" stroke-width="1"/>
-  <text x="502" y="253" text-anchor="middle" font-size="14" font-weight="700" fill="#DC2626">⊘</text>
+  <text x="502" y="253" text-anchor="middle" font-size="14" font-weight="700" fill="#DC2626">drop</text>
 
   <!-- Description -->
   <text x="460" y="280" text-anchor="middle" font-size="10" fill="#475569">No retries — failed records are</text>

@@ -35,7 +35,7 @@
 
     <!-- TTL Clock -->
     <rect x="16" y="102" width="136" height="32" rx="6" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="0.8"/>
-    <text x="32" y="122" font-size="10" fill="#64748B">⏱</text>
+    <text x="32" y="122" font-size="10" fill="#64748B">TTL</text>
     <text x="50" y="122" font-size="10" fill="#64748B">TTL Clock</text>
     <rect x="100" y="108" width="44" height="20" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="0.8"/>
     <text x="122" y="122" text-anchor="middle" font-size="9" font-weight="600" fill="#92400E">TTL</text>
