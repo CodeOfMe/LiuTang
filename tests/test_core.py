@@ -220,12 +220,27 @@ class TestState:
         assert state.get() == [1, 2]
         assert len(state) == 2
 
+    def test_list_state_ttl(self):
+        state = ListState("test", ttl=0.01)
+        state.add(1)
+        state.add(2)
+        assert state.get() == [1, 2]
+        time.sleep(0.02)
+        assert state.get() is None
+
     def test_map_state(self):
         state = MapState("test")
         state.put("a", 1)
         state.put("b", 2)
         assert state.get("a") == 1
         assert "a" in state.keys()
+
+    def test_map_state_ttl(self):
+        state = MapState("test", ttl=0.01)
+        state.put("a", 1)
+        assert state.get("a") == 1
+        time.sleep(0.02)
+        assert state.get("a") is None
 
     def test_reducing_state_backend(self):
         state = MemoryStateBackend()
@@ -238,6 +253,13 @@ class TestState:
         rs.add(10)
         rs.add(20)
         assert rs.get() == 30
+
+    def test_reducing_state_ttl(self):
+        rs = ReducingState("sum_ttl", reduce_fn=lambda a, b: a + b, ttl=0.01)
+        rs.add(10)
+        assert rs.get() == 10
+        time.sleep(0.02)
+        assert rs.get() is None
 
     def test_memory_backend_checkpoint(self):
         backend = MemoryStateBackend()
@@ -630,6 +652,13 @@ class TestAggregatingState:
         agg = AggregatingState("test", add_fn=lambda a, b: a + b)
         agg.add(1)
         agg.clear()
+        assert agg.get() is None
+
+    def test_aggregating_state_ttl(self):
+        agg = AggregatingState("agg_ttl", add_fn=lambda acc, x: acc + x, init_value=0, ttl=0.01)
+        agg.add(10)
+        assert agg.get() == 10
+        time.sleep(0.02)
         assert agg.get() is None
 
 

@@ -58,6 +58,11 @@ class ListState:
         self._last_access = time.monotonic()
 
     def get(self) -> List[Any]:
+        if self._ttl and self._values:
+            if time.monotonic() - self._last_access > self._ttl:
+                self._values = []
+                return None
+        self._last_access = time.monotonic()
         return list(self._values)
 
     def clear(self) -> None:
@@ -78,6 +83,10 @@ class MapState:
         self._last_access: float = time.monotonic()
 
     def get(self, key: Any) -> Any:
+        if self._ttl and self._entries:
+            if time.monotonic() - self._last_access > self._ttl:
+                self._entries = {}
+                return None
         self._last_access = time.monotonic()
         return self._entries.get(key)
 
@@ -122,6 +131,11 @@ class ReducingState:
         self._last_access = time.monotonic()
 
     def get(self) -> Any:
+        if self._ttl and self._has_value:
+            if time.monotonic() - self._last_access > self._ttl:
+                self._value = None
+                self._has_value = False
+                return None
         return self._value
 
     def clear(self) -> None:
@@ -150,6 +164,11 @@ class AggregatingState:
         self._last_access = time.monotonic()
 
     def get(self) -> Any:
+        if self._ttl and self._has_value:
+            if time.monotonic() - self._last_access > self._ttl:
+                self._accumulator = None
+                self._has_value = False
+                return None
         return self._accumulator
 
     def clear(self) -> None:

@@ -370,3 +370,39 @@ LiuTang demonstrates that the streaming–batch dichotomy is false: by modeling 
 We must be candid about what LiuTang is not. It is an architectural concept and research prototype, not a production-grade platform. Its single-machine execution model limits horizontal scalability. Its exactly-once semantics operate only within a single process. Its viscosity thresholds require manual tuning. Distributed coordination of viscosity levels across a cluster, fault-tolerant recovery across node failures, and a SQL API all remain as future work. These gaps are real, and closing them will require substantial engineering effort that goes beyond the conceptual innovation presented here.
 
 Yet the innovation itself—the idea that data processing systems can be governed by the same physical laws that govern natural fluid flow—is, we believe, a contribution of lasting value. Implemented as a zero-dependency pure-Python framework, LiuTang simultaneously provides complete Dataflow Model semantics including watermark-based event-time processing, five window types, five state primitives with TTL, switchable delivery semantics, and unified Lambda/Kappa/Adaptive architecture modes. Our evaluation across 466 tests and a ten-dimension framework comparison confirms that the viscosity-controllable architecture is not merely a metaphor but a workable control mechanism, and that LiuTang uniquely occupies the intersection of zero-dependency deployment, complete streaming semantics, and rheology-inspired adaptive architecture. Future work includes custom window triggers, distributed exactly-once semantics, event-log-based replay for fault-tolerant distributed deployments, and—most significantly—distributed viscosity coordination across multi-node topologies, where the physical analogy of coupled fluid reservoirs may offer further design guidance.
+
+## References
+
+[1] P. Carbone, A. Katsifodimos, S. Ewen, V. Markl, S. Haridi, and K. Tzoumas, "Apache Flink: Stream and batch processing in a single engine," in *Bulletin of the IEEE Computer Society Technical Committee on Data Engineering*, vol. 38, no. 4, 2015, pp. 28–38.
+
+[2] Google Cloud Platform, "Apache Beam: A unified model for batch and stream processing," https://beam.apache.org, 2016.
+
+[3] M. Fragkoulis, P. Carbone, V. Kalavri, and A. Katsifodimos, "A survey on the evolution of stream processing systems," *arXiv preprint arXiv:2008.00842*, 2020.
+
+[4] Robinhood Markets, "Faust: A stream processing library for Python," https://github.com/robinhood/faust, 2018.
+
+[5] M. Rocklin et al., "Streamz: Stream processing for Python," https://github.com/python-streamz/streamz, 2019.
+
+[6] T. Akidau, E. Begoli, S. Chernyak, F. Hueske, K. Knight, K. Knowles, D. Mills, and D. Sotolongo, "Watermarks in stream processing systems: Semantics and comparative analysis of Apache Flink and Google Cloud Dataflow," *Proceedings of the VLDB Endowment*, vol. 14, no. 12, pp. 3135–3147, 2021.
+
+[7] K. M. Chandy and L. Lamport, "Distributed snapshots: Determining global states of distributed systems," *ACM Transactions on Computer Systems*, vol. 3, no. 1, pp. 63–75, 1985.
+
+[8] M. K. Geldenhuys, D. Scheinert, O. Kao, and L. Thamsen, "Phoebe: QoS-aware distributed stream processing through anticipating dynamic workloads," in *IEEE/ACM International Conference on Cluster, Cloud and Internet Computing*, 2022.
+
+[9] G. Liao, A. Deshpande, and D. J. Abadi, "Flock: A low-cost streaming query engine on FaaS platforms," in *Proceedings of ACM Conference*, 2024.
+
+[10] Bytewax, Inc., "Bytewax: Python-native stream processing framework," https://github.com/bytewax/bytewax, 2022.
+
+[11] M. Bartoszkiewicz, J. Chorowski, A. Kosowski, J. Kowalski, S. Kulik, M. Lewandowski, K. Nowicki, K. Piechowiak, O. Ruas, Z. Stamirowska, and P. Uznański, "Pathway: A fast and flexible unified stream data processing framework for analytical and machine learning applications," *arXiv preprint arXiv:2307.13116*, 2023.
+
+[12] N. Carl, N. Kowallik, C. Stahl, T. Schirmer, T. Pfandzelter, and D. Bermbach, "Serverless abstractions for short-running, lightweight streams," *arXiv preprint arXiv:2603.03089*, 2026.
+
+[13] V. Gulisano, A. Margara, and M. Papatriantafilou, "On the semantic overlap of operators in stream processing engines," in *Proceedings of the ACM Symposium on Applied Computing*, 2023.
+
+[14] S. Esteves, R. Rodrigues, L. Veiga, G. De Francisci Morales, and M. Serafini, "Aion: Better late than never in event-time streams," *arXiv preprint arXiv:2003.03604*, 2020.
+
+[15] T. Akidau, R. Bradshaw, C. Chernyak, H. Lévy-Marchal, and S. Whittle, "The dataflow model: A practical approach to balancing correctness, latency, and cost in massively-scaled, unbounded, out-of-order data processing," in *Proceedings of the 41st International Conference on Very Large Data Bases (VLDB)*, 2015, pp. 1792–1803.
+
+[16] G. Siachamis, K. Psarakis, M. Fragkoulis, A. van Deursen, P. Carbone, and A. Katsifodimos, "CheckMate: Evaluating checkpointing protocols for streaming dataflows," in *IEEE International Conference on Data Engineering*, 2024.
+
+[17] J. Spenger, K. Krafeld, R. van Gemeren, P. Haller, and P. Carbone, "Holon streaming: Global aggregations with windowed CRDTs," *arXiv preprint arXiv:2510.25757*, 2025.
