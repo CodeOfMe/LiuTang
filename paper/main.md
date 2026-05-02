@@ -42,7 +42,7 @@ Based on the gaps identified in the previous section, we establish five design g
 
 LiuTang adopts a four-layer architecture in which the ViscosityController occupies a central position, bridging the operation and execution layers. The API layer captures pipeline definitions through Flow, Stream, KeyedStream, WindowedStream, and TableStream. The operation layer compiles these into typed pipeline operations via PipelineOp and PipelineBuilder. The execution layer runs the compiled operations in batch, streaming, or adaptive mode through an Executor (Batch/Streaming/Adaptive), StreamRunner, WatermarkTracker, DeliveryMode, and the ViscosityController itself. The state layer manages per-key state with TTL and checkpointing through five state primitives and a MemoryStateBackend. The ViscosityController is not a peripheral component but the mechanism through which the execution layer determines how fluidly or sluggishly data should be processed, making viscosity the governing principle of the entire system.
 
-![Figure 1: LiuTang's four-layer architecture with the ViscosityController bridging the operation and execution layers.](figures/fig-architecture.svg)
+Figure 1: LiuTang's four-layer architecture with the ViscosityController bridging the operation and execution layers.
 
 ### B. Pipeline Definition
 
@@ -77,7 +77,7 @@ The fundamental observation is that data in a stream processing system behaves l
 
 We define the Viscosity enum as a five-level spectrum, each level associated with a viscosity coefficient η, a batch size, a timeout, and a Chinese poetic name evoking the fluid character. At η = 0 (VOLATILE, *rú shuǐ*, "like water"), data flows freely—the system processes records individually with batch size 1 and a 10 ms timeout, achieving latency-optimal processing equivalent to the Kappa architecture's continuous processing model. At η = 1 (FROZEN, *rú bīng*, "like ice"), data is frozen solid—the system accumulates batches of 100,000 records with a 2,000 ms timeout, achieving throughput-optimal processing equivalent to batch execution. Between these extremes, three intermediate levels model fluids of increasing viscosity: FLUID (η = 0.25, *rú xī*, "like a brook") with batch size 50 and 50 ms timeout, HONEYED (η = 0.5, *rú mì*, "like honey") with batch size 500 and 100 ms timeout, and SLUGGISH (η = 0.75, *rú ní*, "like mud") with batch size 5,000 and 500 ms timeout. The GranularityLevel enum is retained as a backward-compatible alias with the mapping MICRO → VOLATILE, FINE → FLUID, MEDIUM → HONEYED, COARSE → SLUGGISH, MACRO → FROZEN. Figure 2 illustrates this spectrum.
 
-![Figure 2: The viscosity spectrum η ∈ [0,1]—from VOLATILE (η = 0, pure streaming) to FROZEN (η = 1, pure batch).](figures/fig-viscosity-spectrum.svg)
+Figure 2: The viscosity spectrum η ∈ [0,1]—from VOLATILE (η = 0, pure streaming) to FROZEN (η = 1, pure batch).
 
 The controller measures the system's flow state using FlowMetrics, which captures three fluid-dynamics-inspired quantities. The shear rate γ̇ = λ is the arrival rate of records in records per second, analogous to the rate at which fluid layers slide past one another—when γ̇ is high, data is flowing rapidly; when γ̇ is low, the flow is sparse. The shear stress τ = f(d, ℓ) is a function of queue depth d and processing latency ℓ, representing the internal friction the system experiences as it processes the flow—high τ indicates the system is under stress with deep queues or slow processing. The measured viscosity η = clamp(τ / γ̇, 0, 1) is the ratio of shear stress to shear rate, directly derived from Newton's law, ensuring that the measured viscosity is a consequence of operating conditions rather than an arbitrary parameter.
 
@@ -131,7 +131,7 @@ When γ̇ = 0 (no data arriving), we define η = 0, corresponding to the observa
 
 The EFFICIENT policy biases Δ toward +1 by requiring only ℓ < θ_ℓ; the RESPONSIVE policy biases Δ toward −1 by requiring only d < θ'_d. Figure 3 illustrates the feedback loop.
 
-![Figure 3: The ViscosityController feedback loop: FlowMetrics measures shear rate and stress; the policy computes Δη; the viscosity level adjusts batch_size and timeout.](figures/fig-viscosity-controller.svg)
+Figure 3: The ViscosityController feedback loop: FlowMetrics measures shear rate and stress; the policy computes Δη; the viscosity level adjusts batch_size and timeout.
 
 A key theoretical property follows. At VOLATILE (g = 0, η = 0), the system degenerates to pure record-at-a-time streaming with batch_size = 1 and minimal timeout, providing latency-optimal processing. At FROZEN (g = 4, η = 1), the system degenerates to batch processing with batch_size = 100000 and extended timeout, providing throughput-optimal processing. The ViscosityController smoothly interpolates between these extremes as a fluid flows between water and ice, enabling a single pipeline to adapt its processing strategy to real-time workload characteristics without manual reconfiguration or separate infrastructure.
 
@@ -177,7 +177,7 @@ where each record belongs to ⌈s/l⌉ windows. The session window creates dynam
 
 where g is the gap threshold and sessions merge when overlapping. The over window provides an aggregate window over all data for cumulative computations, while the global window assigns all records to a single window, typically used with custom triggers. All window types support an `allowed_lateness` parameter that determines how long a window retains its state after the watermark passes. Figure 4 illustrates the five window types.
 
-![Figure 4: LiuTang's five window types: tumbling, sliding, session, over, and global.](figures/fig-window-types.svg)
+Figure 4: LiuTang's five window types: tumbling, sliding, session, over, and global.
 
 ### E. State Management
 
@@ -191,7 +191,7 @@ LiuTang provides five state primitives, each with optional TTL:
 
 State is accessed through `RuntimeContext`, which provides per-key isolation via a nested dictionary structure: `keyed_states[key][name] → State`. Figure 5 illustrates the five state primitives.
 
-![Figure 5: LiuTang's five state primitives with optional TTL.](figures/fig-state-primitives.svg)
+Figure 5: LiuTang's five state primitives with optional TTL.
 
 LiuTang provides KeyedProcessFunction, an abstract class with `open()`, `process_element()`, `on_timer()`, and `close()` callbacks. The TimerService allows registering event-time and processing-time timers that fire callback functions when the watermark advances past the registered timestamp:
 
@@ -266,7 +266,7 @@ The EventLog provides an append-only segmented JSON log with `read(offset, limit
 
 The AdaptiveFlow, described in detail in Section IV-C, treats the streaming–batch spectrum as a continuous dimension governed by viscosity η rather than a binary switch. Where Lambda splits the world into two layers and Kappa collapses it into one, the adaptive mode provides a single pipeline that fluidly moves along the spectrum based on real-time conditions. Figure 6 shows how these three paradigms relate: Lambda's dual batch+speed layers sit at opposite ends of the viscosity spectrum, Kappa's single event-log replay path occupies the low-viscosity end, and the adaptive mode spans the entire spectrum with η as the control variable. The Flow class accepts an architecture parameter with four values: SIMPLE for single-pipeline workloads, LAMBDA for dual batch+speed+serving configurations, KAPPA for event-log-backed replay, and ADAPTIVE for viscosity-controllable operation where η governs the streaming–batch continuum.
 
-![Figure 6: Three architecture paradigms: Lambda (dual batch+speed), Kappa (event log replay), and Viscosity-Adaptive (η-controlled spectrum).](figures/fig-lambda-kappa-adaptive.svg)
+Figure 6: Three architecture paradigms: Lambda (dual batch+speed), Kappa (event log replay), and Viscosity-Adaptive (η-controlled spectrum).
 
 ### H. Delivery Semantics
 
@@ -289,7 +289,7 @@ id(r) = SHA-256(json_dumps(r, sort_keys=True))
 
 Before applying an operation, input records are filtered against `processed_ids`; on failure, the IDs are rolled back, and sink emission also checks the deduplication set to prevent duplicate output. The `processed_ids` set uses an OrderedDict with LRU eviction at 100,000 entries to bound memory usage, providing exactly-once semantics within a single-machine context consistent with the idempotent state update pattern described in [15].
 
-![Figure 7: Three delivery semantics: at-least-once (retry with potential duplicates), at-most-once (drop on failure), exactly-once (SHA-256 deduplication).](figures/fig-delivery-semantics.svg)
+Figure 7: Three delivery semantics: at-least-once (retry with potential duplicates), at-most-once (drop on failure), exactly-once (SHA-256 deduplication).
 
 ## V. Experiments
 
@@ -314,7 +314,7 @@ We compare LiuTang against six existing frameworks across ten dimensions. Table 
 | Architecture Modes | **4** | — | — | — | — | — | — |
 | Python-Native | **100%** | Py4J | Py4J | Py4J | Rust core | 100% | 100% |
 
-![Figure 8: Streaming semantic coverage radar: LiuTang (blue), PyFlink (red), Bytewax (green).](figures/fig-radar-features.svg)
+Figure 8: Streaming semantic coverage radar: LiuTang (blue), PyFlink (red), Bytewax (green).
 
 LiuTang is the only framework achieving zero dependency, complete streaming semantics, and Python-native implementation simultaneously, and it is the only framework of any language that provides four architecture modes including viscosity-controllable adaptive processing.
 
@@ -322,7 +322,7 @@ LiuTang is the only framework achieving zero dependency, complete streaming sema
 
 We validate LiuTang's functional correctness and performance through a comprehensive test suite of 466 tests distributed across four test files. The test_core.py module contains 302 tests covering flow creation, schema definition, stream operations, window types, connectors, state primitives, timer service, keyed process functions, watermark strategies, batch execution, delivery semantics, and architecture modes. The test_features.py module contains 93 tests covering event log operations, serving views, merge views, LambdaFlow and KappaFlow execution and integration, viscosity enum and FlowMetrics, ViscosityController construction and policies, and AdaptiveFlow execution. The test_benchmark.py module contains 61 tests measuring throughput for core stream operations on 10K-element datasets across batch and streaming modes. The test_distributed.py module contains 10 tests validating distributed simulation behavior. All 466 tests pass, confirming that LiuTang correctly implements its declared semantics. Figure 9 shows benchmark throughput for core stream operations.
 
-![Figure 9: Benchmark throughput for core stream operations on a 10K-element dataset.](figures/fig-benchmark-throughput.svg)
+Figure 9: Benchmark throughput for core stream operations on a 10K-element dataset.
 
 ### C. Viscosity Spectrum Evaluation
 
@@ -355,7 +355,7 @@ The equivalent PyFlink program requires importing Py4J, obtaining an execution e
 | Beam | 20min+ | JDK + Runner |
 | PyFlink | 30min+ | JDK + Flink Cluster |
 
-![Figure 10: Deployment characteristics radar: LiuTang (blue), PyFlink (red), Bytewax (green).](figures/fig-radar-deployment.svg)
+Figure 10: Deployment characteristics radar: LiuTang (blue), PyFlink (red), Bytewax (green).
 
 ### E. Discussion
 
