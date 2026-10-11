@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 360" width="820" height="360" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="sh" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.08"/>
+    </filter>
+    <marker id="a" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <path d="M0,0 L7,2.5 L0,5" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="820" height="360" rx="8" fill="#F8FAFC"/>
+  <rect x="1" y="1" width="818" height="358" rx="8" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <text x="370" y="20" text-anchor="middle" font-size="13" font-weight="700" fill="#1E293B">LiuTang Architecture</text>
+
+  <!-- ============ LAYER 1: API Layer ============ -->
+  <rect x="20" y="28" width="710" height="60" rx="6" fill="#DBEAFE" stroke="#93C5FD" stroke-width="1" filter="url(#sh)"/>
+  <text x="32" y="42" font-size="9" font-weight="700" fill="#2563EB" letter-spacing="0.8">API LAYER</text>
+  <rect x="32" y="48" width="108" height="32" rx="5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <text x="86" y="69" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">Flow</text>
+  <rect x="148" y="48" width="108" height="32" rx="5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <text x="202" y="69" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">Stream</text>
+  <rect x="264" y="48" width="118" height="32" rx="5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <text x="323" y="69" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">KeyedStream</text>
+  <rect x="390" y="48" width="136" height="32" rx="5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <text x="458" y="69" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">WindowedStream</text>
+  <rect x="534" y="48" width="118" height="32" rx="5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <text x="593" y="69" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">TableStream</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="370" y1="88" x2="370" y2="98" stroke="#94A3B8" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <!-- ============ LAYER 2: Operation Layer ============ -->
+  <rect x="20" y="100" width="710" height="60" rx="6" fill="#D1FAE5" stroke="#6EE7B7" stroke-width="1" filter="url(#sh)"/>
+  <text x="32" y="114" font-size="9" font-weight="700" fill="#059669" letter-spacing="0.8">OPERATION LAYER</text>
+  <rect x="32" y="120" width="140" height="32" rx="5" fill="white" stroke="#10B981" stroke-width="1.2"/>
+  <text x="102" y="141" text-anchor="middle" font-size="11" font-weight="600" fill="#047857">PipelineOp</text>
+  <rect x="180" y="120" width="150" height="32" rx="5" fill="white" stroke="#10B981" stroke-width="1.2"/>
+  <text x="255" y="141" text-anchor="middle" font-size="11" font-weight="600" fill="#047857">PipelineBuilder</text>
+  <!-- ViscosityController highlighted -->
+  <rect x="340" y="118" width="170" height="36" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2" filter="url(#sh)"/>
+  <text x="425" y="141" text-anchor="middle" font-size="11" font-weight="700" fill="#92400E">ViscosityController</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="370" y1="160" x2="370" y2="170" stroke="#94A3B8" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <!-- ViscosityController bridge arrow (highlighted) -->
+  <path d="M425,154 L425,196 L425,218" stroke="#F59E0B" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+  <!-- ============ LAYER 3: Execution Layer ============ -->
+  <rect x="20" y="172" width="710" height="72" rx="6" fill="#FEF3C7" stroke="#FDE68A" stroke-width="1" filter="url(#sh)"/>
+  <text x="32" y="186" font-size="9" font-weight="700" fill="#D97706" letter-spacing="0.8">EXECUTION LAYER</text>
+  <rect x="32" y="192" width="190" height="30" rx="5" fill="white" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="127" y="211" text-anchor="middle" font-size="10" font-weight="600" fill="#B45309">Executor</text>
+  <text x="127" y="220" text-anchor="middle" font-size="7.5" fill="#D97706">Batch / Streaming / Adaptive</text>
+  <rect x="230" y="192" width="120" height="30" rx="5" fill="white" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="290" y="211" text-anchor="middle" font-size="10" font-weight="600" fill="#B45309">StreamRunner</text>
+  <rect x="358" y="192" width="145" height="30" rx="5" fill="white" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="430" y="211" text-anchor="middle" font-size="10" font-weight="600" fill="#B45309">WatermarkTracker</text>
+  <rect x="511" y="192" width="115" height="30" rx="5" fill="white" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="568" y="211" text-anchor="middle" font-size="10" font-weight="600" fill="#B45309">DeliveryMode</text>
+  <text x="568" y="220" text-anchor="middle" font-size="7.5" fill="#D97706">At-Least / At-Most / Exactly</text>
+
+  <!-- Arrow 3→4 -->
+  <line x1="370" y1="244" x2="370" y2="254" stroke="#94A3B8" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <!-- ============ LAYER 4: State Layer ============ -->
+  <rect x="20" y="258" width="710" height="92" rx="6" fill="#EDE9FE" stroke="#C4B5FD" stroke-width="1" filter="url(#sh)"/>
+  <text x="32" y="272" font-size="9" font-weight="700" fill="#7C3AED" letter-spacing="0.8">STATE LAYER</text>
+  <rect x="32" y="278" width="80" height="26" rx="4" fill="white" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="72" y="296" text-anchor="middle" font-size="9" font-weight="600" fill="#6D28D9">ValueState</text>
+  <rect x="120" y="278" width="74" height="26" rx="4" fill="white" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="157" y="296" text-anchor="middle" font-size="9" font-weight="600" fill="#6D28D9">ListState</text>
+  <rect x="202" y="278" width="76" height="26" rx="4" fill="white" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="240" y="296" text-anchor="middle" font-size="9" font-weight="600" fill="#6D28D9">MapState</text>
+  <rect x="286" y="278" width="96" height="26" rx="4" fill="white" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="334" y="296" text-anchor="middle" font-size="9" font-weight="600" fill="#6D28D9">ReducingState</text>
+  <rect x="390" y="278" width="110" height="26" rx="4" fill="white" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="445" y="296" text-anchor="middle" font-size="9" font-weight="600" fill="#6D28D9">AggregatingState</text>
+
+  <!-- Backends row -->
+  <line x1="32" y1="310" x2="700" y2="310" stroke="#C4B5FD" stroke-width="0.5" stroke-dasharray="3,2"/>
+  <text x="32" y="325" font-size="8" fill="#7C3AED" font-weight="600">Backends:</text>
+  <rect x="82" y="313" width="130" height="26" rx="4" fill="white" stroke="#A78BFA" stroke-width="0.8"/>
+  <text x="147" y="330" text-anchor="middle" font-size="9" font-weight="500" fill="#6D28D9">MemoryStateBackend</text>
+  <rect x="220" y="313" width="128" height="26" rx="4" fill="white" stroke="#A78BFA" stroke-width="0.8"/>
+  <text x="284" y="330" text-anchor="middle" font-size="9" font-weight="500" fill="#6D28D9">JsonFileStateBackend</text>
+
+  <!-- TTL badge -->
+  <rect x="356" y="313" width="50" height="26" rx="4" fill="#F5F3FF" stroke="#A78BFA" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <text x="381" y="330" text-anchor="middle" font-size="9" font-weight="500" fill="#7C3AED">TTL</text>
+
+  <!-- ============ SIDE: Connectors ============ -->
+  <rect x="738" y="28" width="70" height="322" rx="6" fill="#FEF2F2" stroke="#FECACA" stroke-width="1" filter="url(#sh)"/>
+  <text x="773" y="44" text-anchor="middle" font-size="8.5" font-weight="700" fill="#DC2626" letter-spacing="0.3">CONNECTORS</text>
+
+  <text x="773" y="60" text-anchor="middle" font-size="7.5" font-weight="600" fill="#991B1B">Sources</text>
+  <rect x="746" y="64" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="77" text-anchor="middle" font-size="7" fill="#DC2626">Collection</text>
+  <rect x="746" y="86" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="99" text-anchor="middle" font-size="7" fill="#DC2626">File</text>
+  <rect x="746" y="108" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="121" text-anchor="middle" font-size="7" fill="#DC2626">Generator</text>
+  <rect x="746" y="130" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="143" text-anchor="middle" font-size="7" fill="#DC2626">Kafka</text>
+  <rect x="746" y="152" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="165" text-anchor="middle" font-size="7" fill="#DC2626">Datagen</text>
+  <rect x="746" y="174" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="187" text-anchor="middle" font-size="7" fill="#DC2626">Socket</text>
+
+  <line x1="746" y1="198" x2="800" y2="198" stroke="#FCA5A5" stroke-width="0.4"/>
+
+  <text x="773" y="212" text-anchor="middle" font-size="7.5" font-weight="600" fill="#991B1B">Sinks</text>
+  <rect x="746" y="216" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="229" text-anchor="middle" font-size="7" fill="#DC2626">Print</text>
+  <rect x="746" y="238" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="251" text-anchor="middle" font-size="7" fill="#DC2626">File</text>
+  <rect x="746" y="260" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="273" text-anchor="middle" font-size="7" fill="#DC2626">Callback</text>
+  <rect x="746" y="282" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="295" text-anchor="middle" font-size="7" fill="#DC2626">Collect</text>
+  <rect x="746" y="304" width="50" height="18" rx="3" fill="white" stroke="#FCA5A5" stroke-width="0.6"/>
+  <text x="771" y="317" text-anchor="middle" font-size="7" fill="#DC2626">Socket</text>
+
+  <!-- Dashed connector-to-layer lines -->
+  <line x1="738" y1="75" x2="730" y2="58" stroke="#FECACA" stroke-width="0.6" stroke-dasharray="2,2"/>
+  <line x1="738" y1="145" x2="730" y2="130" stroke="#FECACA" stroke-width="0.6" stroke-dasharray="2,2"/>
+  <line x1="738" y1="208" x2="730" y2="208" stroke="#FECACA" stroke-width="0.6" stroke-dasharray="2,2"/>
+  <line x1="738" y1="290" x2="730" y2="290" stroke="#FECACA" stroke-width="0.6" stroke-dasharray="2,2"/>
+</svg>

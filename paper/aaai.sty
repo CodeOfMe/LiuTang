@@ -1,0 +1,50 @@
+% AAAI style - minimal compatible version
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{aaai}[2024/01/01 AAAI style]
+
+\typeout{AAAI style sheet}
+
+% Page layout
+\setlength{\paperwidth}{8.5in}
+\setlength{\paperheight}{11in}
+\setlength{\topmargin}{-0.25in}
+\setlength{\oddsidemargin}{-0.1in}
+\setlength{\evensidemargin}{-0.1in}
+\setlength{\textwidth}{6.8in}
+\setlength{\textheight}{9.0in}
+\setlength{\parindent}{0.25in}
+\setlength{\parskip}{0pt}
+
+% Font sizes
+\renewcommand\normalsize{\@setfontsize\normalsize\@xpt\@xiipt}
+\renewcommand\small{\@setfontsize\small\@ixpt\@xpt}
+\renewcommand\footnotesize{\@setfontsize\footnotesize\@viiipt\@ixpt}
+
+% Title
+\def\@maketitle{%
+  \newpage
+  \null
+  \vskip 2em
+  \begin{center}
+  {\LARGE \@title \par}
+  \vskip 1.5em
+  {\large \@author \par}
+  \vskip 1em
+  {\large \@date \par}
+  \end{center}
+  \vskip 1.5em
+}
+
+% Section numbering
+\renewcommand\section{\@startsection{section}{1}{\z@}{-3.5ex plus -1ex minus -.2ex}{2.3ex plus .2ex}{\normalsize\bfseries}}
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}{-3.25ex plus -1ex minus -.2ex}{1.5ex plus .2ex}{\normalsize\bfseries}}
+\renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}{-3.25ex plus -1ex minus -.2ex}{1.5ex plus .2ex}{\normalsize\bfseries}}
+
+% Floats
+\setlength\floatsep{1.5\baselineskip plus 0.2\baselineskip minus 0.2\baselineskip}
+\setlength\textfloatsep{2\baselineskip plus 0.2\baselineskip minus 0.2\baselineskip}
+
+% Footer
+\pagestyle{plain}
+
+\endinput

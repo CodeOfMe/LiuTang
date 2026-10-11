@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 520" width="500" height="520" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="500" height="520" rx="12" fill="#F8FAFC"/>
+  <rect x="1" y="1" width="498" height="518" rx="12" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="250" y="32" text-anchor="middle" font-size="16" font-weight="700" fill="#1E293B">Deployment Comparison</text>
+
+  <!-- Radar chart center at (250, 260), radius 160 -->
+  <!-- 5 axes at -90°, -18°, 54°, 126°, 198° (72° apart) -->
+
+  <!-- Grid circles -->
+  <g stroke="#E2E8F0" stroke-width="0.5" fill="none">
+    <circle cx="250" cy="260" r="32"/>
+    <circle cx="250" cy="260" r="64"/>
+    <circle cx="250" cy="260" r="96"/>
+    <circle cx="250" cy="260" r="128"/>
+    <circle cx="250" cy="260" r="160"/>
+  </g>
+
+  <!-- Axis lines -->
+  <g stroke="#CBD5E1" stroke-width="0.8">
+    <line x1="250" y1="260" x2="250" y2="100"/>
+    <line x1="250" y1="260" x2="402.2" y2="210.6"/>
+    <line x1="250" y1="260" x2="344.1" y2="388.8"/>
+    <line x1="250" y1="260" x2="155.9" y2="388.8"/>
+    <line x1="250" y1="260" x2="97.8" y2="210.6"/>
+  </g>
+
+  <!-- Grid labels -->
+  <g font-size="8" fill="#94A3B8" text-anchor="start">
+    <text x="255" y="228">1</text>
+    <text x="255" y="196">2</text>
+    <text x="255" y="164">3</text>
+    <text x="255" y="132">4</text>
+    <text x="255" y="100">5</text>
+  </g>
+
+  <!-- Axis labels -->
+  <text x="250" y="88" text-anchor="middle" font-size="11" font-weight="600" fill="#1E293B">Python-Native</text>
+  <text x="414" y="205" text-anchor="start" font-size="11" font-weight="600" fill="#1E293B">Install Size</text>
+  <text x="356" y="404" text-anchor="start" font-size="11" font-weight="600" fill="#1E293B">API Simplicity</text>
+  <text x="144" y="404" text-anchor="end" font-size="11" font-weight="600" fill="#1E293B">Parallelism</text>
+  <text x="86" y="205" text-anchor="end" font-size="11" font-weight="600" fill="#1E293B">Architecture</text>
+  <text x="86" y="218" text-anchor="end" font-size="11" font-weight="600" fill="#1E293B">Modes</text>
+
+  <!-- PyFlink (red) - 2,1,2,5,1 -->
+  <!--
+    0° (top): 2 → r=64 → (250, 196)
+    72°: 1 → r=32 → (250+30.45, 260-9.89)=(280.4, 250.1)
+    144°: 2 → r=64 → (250+37.65, 260+51.78)=(287.6, 311.8)
+    216°: 5 → r=160 → (155.9, 389)
+    288°: 1 → r=32 → (250-30.45, 260-9.89)=(219.6, 250.1)
+  -->
+  <polygon points="250,196 280.4,250.1 287.6,311.8 155.9,389 219.6,250.1"
+    fill="#DC2626" fill-opacity="0.12" stroke="#DC2626" stroke-width="1.5" stroke-opacity="0.6"/>
+
+  <!-- Bytewax (green) - 3,3,3,4,1 -->
+  <!--
+    0°: 3 → r=96 → (250, 164)
+    72°: 3 → r=96 → (250+91.35, 260-29.66)=(341.4, 230.3)
+    144°: 3 → r=96 → (250+56.47, 260+77.63)=(306.5, 337.6)
+    216°: 4 → r=128 → (250-75.29, 260+103.53)=(174.7, 363.5)
+    288°: 1 → r=32 → (219.6, 250.1)
+  -->
+  <polygon points="250,164 341.4,230.3 306.5,337.6 174.7,363.5 219.6,250.1"
+    fill="#059669" fill-opacity="0.12" stroke="#059669" stroke-width="1.5" stroke-opacity="0.6"/>
+
+  <!-- LiuTang (blue) - 5,5,5,3,5 -->
+  <!--
+    0°: 5 → (250, 100)
+    72°: 5 → (402.2, 210.6)
+    144°: 5 → (344.1, 389)
+    216°: 3 → r=96 → (193.5, 337.6)
+    288°: 5 → (97.8, 210.6)
+  -->
+  <polygon points="250,100 402.2,210.6 344.1,389 193.5,337.6 97.8,210.6"
+    fill="#2563EB" fill-opacity="0.15" stroke="#2563EB" stroke-width="2" stroke-opacity="0.8"/>
+
+  <!-- Data points - LiuTang -->
+  <g fill="#2563EB">
+    <circle cx="250" cy="100" r="4"/>
+    <circle cx="402.2" cy="210.6" r="4"/>
+    <circle cx="344.1" cy="389" r="4"/>
+    <circle cx="193.5" cy="337.6" r="4"/>
+    <circle cx="97.8" cy="210.6" r="4"/>
+  </g>
+
+  <!-- Data points - PyFlink -->
+  <g fill="#DC2626">
+    <circle cx="250" cy="196" r="3.5"/>
+    <circle cx="280.4" cy="250.1" r="3.5"/>
+    <circle cx="287.6" cy="311.8" r="3.5"/>
+    <circle cx="155.9" cy="389" r="3.5"/>
+    <circle cx="219.6" cy="250.1" r="3.5"/>
+  </g>
+
+  <!-- Data points - Bytewax -->
+  <g fill="#059669">
+    <circle cx="250" cy="164" r="3.5"/>
+    <circle cx="341.4" cy="230.3" r="3.5"/>
+    <circle cx="306.5" cy="337.6" r="3.5"/>
+    <circle cx="174.7" cy="363.5" r="3.5"/>
+    <circle cx="219.6" cy="250.1" r="3.5"/>
+  </g>
+
+  <!-- Legend -->
+  <rect x="28" y="460" width="440" height="44" rx="8" fill="white" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="48" y="474" width="24" height="12" rx="3" fill="#2563EB" fill-opacity="0.6" stroke="#2563EB" stroke-width="1"/>
+  <text x="80" y="485" font-size="12" font-weight="600" fill="#1E293B">LiuTang</text>
+  <text x="126" y="485" font-size="10" fill="#64748B">(5,5,5,3,5)</text>
+
+  <rect x="188" y="474" width="24" height="12" rx="3" fill="#DC2626" fill-opacity="0.4" stroke="#DC2626" stroke-width="1"/>
+  <text x="220" y="485" font-size="12" font-weight="600" fill="#1E293B">PyFlink</text>
+  <text x="266" y="485" font-size="10" fill="#64748B">(2,1,2,5,1)</text>
+
+  <rect x="328" y="474" width="24" height="12" rx="3" fill="#059669" fill-opacity="0.4" stroke="#059669" stroke-width="1"/>
+  <text x="360" y="485" font-size="12" font-weight="600" fill="#1E293B">Bytewax</text>
+  <text x="414" y="485" font-size="10" fill="#64748B">(3,3,3,4,1)</text>
+</svg>
